@@ -1,16 +1,48 @@
-# React + Vite
+# MicroLedger - Reconciliation Engine
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+MicroLedger is a fast, 100% client-side React application for automated and manual financial reconciliation, built with Vite and TypeScript.
 
-Currently, two official plugins are available:
+## 🚀 Features
+- **Data Conversion**: Instantly map accounting software exports (like Tally, SAP, Zoho) into a standard Base Format.
+- **Auto Reconciliation**: Fuzzy matching algorithm that automatically detects and reconciles hundreds of transactions between your books and customer books without server lag.
+- **Manual Reconciliation**: Interactive step-by-step mapping for custom or complex ledger formats.
+- **PDF to CSV Converter**: A secure, browser-based tool to extract raw data from PDF bank statements into Excel-ready CSV files.
+- **Utility Tools**: Built-in GST Calculator, Number to Words converter, and Date Calculator.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ Setup Instructions
 
-## React Compiler
+Because the application processes data entirely on the client-side (in the browser), there are no complex backend servers or databases to configure.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Prerequisites
+- Node.js (v18 or higher recommended)
+- npm (Node Package Manager)
 
-## Expanding the ESLint configuration
+### 1. Installation
+Clone the repository and install the dependencies:
+```bash
+# Clone the repository
+git clone https://github.com/BinaryBard27/reconcile-testing.git
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# Navigate to the directory
+cd reconcile-testing
+
+# Install dependencies
+npm install
+```
+
+### 2. Local Development
+Run the development server to test the app locally with hot-module replacement (HMR):
+```bash
+npm run dev
+```
+Open your browser and navigate to `http://localhost:5173`.
+
+### 3. Production Build
+To create an optimized, minified production build of the application:
+```bash
+npm run build
+```
+The compiled static files will be placed in the `/dist` directory. These files can be deployed directly to any static hosting provider (e.g., Vercel, Netlify, Cloudflare Pages, AWS S3).
+
+## 🔒 Security & Privacy
+Since MicroLedger relies exclusively on client-side processing, any uploaded Excel sheets, CSVs, or PDFs are processed inside your computer's RAM. Your financial data is **never** sent to a backend server.
