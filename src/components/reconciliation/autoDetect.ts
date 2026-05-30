@@ -1,0 +1,77 @@
+import { headerKey } from './utils'
+
+export type DetectedFormat = 'TALLY' | 'SAP' | 'ZOHO' | 'GENERIC'
+
+interface MappingSuggestion {
+  refNo: string
+  entryType: string
+  date: string
+  amountINR: string
+  debitAmount: string
+  creditAmount: string
+  amountUSD: string
+  narration: string
+  utr: string
+  clearedStatus: string
+  docTypeColumn?: string
+  amountLogic: 'separate' | 'signed' | 'doctype'
+}
+
+export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): { format: DetectedFormat, suggestion: MappingSuggestion } {
+  const normHeaders = headers.map(h => headerKey(h))
+  const headerString = normHeaders.join(' ')
+  
+  let format: DetectedFormat = 'GENERIC'
+  
+  // Basic heuristic detection
+  if (headerString.includes('vch type') || headerString.includes('voucher type') || headerString.includes('particulars')) {
+    format = 'TALLY'
+  } else if (headerString.includes('document type') || headerString.includes('doc type') || headerString.includes('assignment') || headerString.includes('clearing document')) {
+    format = 'SAP'
+  } else if (headerString.includes('zoho') || (headerString.includes('customer name') && headerString.includes('invoice status'))) {
+    format = 'ZOHO'
+  }
+
+  // Find best matches for columns
+  const findHeader = (keywords: string[]) => {
+    for (const kw of keywords) {
+      const match = headers.find(h => headerKey(h).includes(kw))
+      if (match) return match
+    }
+    return ''
+  }
+
+  const suggestion: MappingSuggestion = {
+    refNo: findHeader(['ref', 'invoice', 'vch no', 'document no', 'assignment']),
+    entryType: findHeader(['vch type', 'document type', 'type', 'transaction type']),
+    date: findHeader(['date', 'posting date', 'document date']),
+    amountINR: '',
+    debitAmount: '',
+    creditAmount: '',
+    amountUSD: '',
+    narration: findHeader(['narration', 'particulars', 'text', 'description']),
+    utr: findHeader(['utr', 'cheque', 'reference', 'payment ref']),
+    clearedStatus: findHeader(['status', 'clearing', 'recon']),
+    amountLogic: 'signed'
+  }
+
+  // Amount logic detection
+  const hasDebit = findHeader(['debit', 'dr'])
+  const hasCredit = findHeader(['credit', 'cr'])
+  const hasAmount = findHeader(['amount', 'amt', 'value', 'balance'])
+
+  if (hasDebit && hasCredit) {
+    suggestion.debitAmount = hasDebit
+    suggestion.creditAmount = hasCredit
+    suggestion.amountLogic = 'separate'
+  } else if (format === 'SAP' && suggestion.entryType) {
+    suggestion.amountINR = hasAmount || findHeader(['amount in local currency', 'loc.curr.amount'])
+    suggestion.docTypeColumn = suggestion.entryType
+    suggestion.amountLogic = 'doctype'
+  } else {
+    suggestion.amountINR = hasAmount
+    suggestion.amountLogic = 'signed'
+  }
+
+  return { format, suggestion }
+}
