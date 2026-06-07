@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ENTRY_TYPES } from './constants'
 import { detectFormatAndSuggestMapping, DetectedFormat } from './autoDetect'
-import { loadMapping, saveMapping } from './persistence'
+import { loadMapping, saveMapping, deleteMapping } from './persistence'
 
 const FIELD_DEFS = [
   { key: 'refNo', label: 'Reference Number', required: true },
@@ -26,10 +26,10 @@ function smartDefaultForValue(v: string) {
   const s = String(v ?? '').trim().toLowerCase()
   if (!s) return ENTRY_TYPES.IGNORE
 
-  if (['dr', 'dz', 'rv', 'sales', 'invoice', 'inv'].some(x => s.includes(x))) return ENTRY_TYPES.INVOICE
-  if (['cr', 'kz', 'payment', 'receipt', 'pay'].some(x => s.includes(x))) return ENTRY_TYPES.PAYMENT
+  if (['dr', 'rv', 'sales', 'invoice', 'inv'].some(x => s.includes(x))) return ENTRY_TYPES.INVOICE
+  if (['dz', 'cr', 'kz', 'payment', 'receipt', 'pay'].some(x => s.includes(x))) return ENTRY_TYPES.PAYMENT
   if (['dg', 'credit note', 'cn'].some(x => s.includes(x))) return ENTRY_TYPES.CREDIT_NOTE
-  if (['dy', 'sa', 'journal', 'adj'].some(x => s.includes(x))) return ENTRY_TYPES.ADJUSTMENT
+  if (['da', 'xc', 'dy', 'sa', 'journal', 'adj'].some(x => s.includes(x))) return ENTRY_TYPES.ADJUSTMENT
 
   return ENTRY_TYPES.IGNORE
 }
@@ -142,9 +142,29 @@ export default function ColumnMapper({
     const msg = validate()
     if (msg) return setError(msg)
     setError('')
-    
+
     saveMapping(partyName, fileLabel, mapping, entryTypeMap, { amountLogic })
     onMappingComplete(mapping, entryTypeMap, { amountLogic })
+  }
+
+  function resetMapping() {
+    deleteMapping(partyName, fileLabel)
+    setLoadedFromCache(false)
+    setEntryTypeMap({})
+
+    const { format, suggestion } = detectFormatAndSuggestMapping(headers, rawRows || [])
+    setDetectedFormat(format)
+    setMapping({
+      refNo: suggestion.refNo || '',
+      entryType: suggestion.entryType || '',
+      date: suggestion.date || '',
+      amountINR: suggestion.amountINR || '',
+      debitAmount: suggestion.debitAmount || '',
+      creditAmount: suggestion.creditAmount || '',
+      narration: suggestion.narration || '',
+      utr: suggestion.utr || ''
+    })
+    setAmountLogic(suggestion.amountLogic)
   }
 
   return (
@@ -242,6 +262,11 @@ export default function ColumnMapper({
       )}
 
       <div className="actions" style={{ justifyContent: 'flex-end' }}>
+        {loadedFromCache && (
+          <button type="button" className="btn btn-secondary" onClick={resetMapping}>
+            Reset Mapping
+          </button>
+        )}
         <button type="button" className="btn btn-primary" onClick={confirm}>Confirm Mapping</button>
       </div>
     </div>

@@ -27,6 +27,21 @@ export function loadMapping(partyName: string, fileLabel: string) {
   }
 }
 
+export function deleteMapping(partyName: string, fileLabel: string) {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return
+    const store = JSON.parse(raw)
+    const key = `${partyName || 'default'}_${fileLabel}`
+    if (key in store) {
+      delete store[key]
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(store))
+    }
+  } catch (e) {
+    console.error('Failed to delete mapping', e)
+  }
+}
+
 export function getAllSavedMappings() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
