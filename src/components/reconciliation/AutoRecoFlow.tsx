@@ -4,6 +4,7 @@ import { detectFormatAndSuggestMapping } from './autoDetect'
 import { detectDuplicates, normalizeRows } from './NormalizationEngine'
 import { buildSummary, reconcileInvoices } from './ReconciliationEngine'
 import ResultsTable from './ResultsTable'
+import { exportReconciliation } from './ExportEngine'
 
 function autoRemoveExportDuplicates(rows: any[], duplicatesMap: any) {
   const exportRefs = new Set(
@@ -100,7 +101,7 @@ export default function AutoRecoFlow({ onBack }: { onBack: () => void }) {
           summary={summary}
           partyName="Auto_Detected_Party"
           recoDate={new Date().toISOString().split('T')[0]}
-          onExport={() => alert("Export not fully wired in Auto Reco MVP")}
+          onExport={() => exportReconciliation(results, summary, {}, 'Auto_Detected_Party', new Date().toISOString().split('T')[0])}
         />
       </div>
     )

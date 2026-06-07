@@ -1,12 +1,22 @@
 import * as XLSX from 'xlsx'
 
 export function exportReconciliation(results, summary, qualityIssues, partyName, recoDate) {
+  const finalPartyName = partyName || 'Party'
+  let finalRecoDate = recoDate
+  if (!finalRecoDate) {
+    const d = new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    finalRecoDate = `${y}-${m}-${day}`
+  }
+
   const wb = XLSX.utils.book_new()
 
   // Sheet 1: Summary
   const summaryData = [
-    [`Ledger Reconciliation — ${partyName}`],
-    [`As on: ${recoDate}`],
+    [`Ledger Reconciliation — ${finalPartyName}`],
+    [`As on: ${finalRecoDate}`],
     [],
     ['Particulars', 'Amount'],
     ['Total Invoiced (Our Books)', summary.ourTotal],
@@ -74,7 +84,7 @@ export function exportReconciliation(results, summary, qualityIssues, partyName,
   const ws3 = XLSX.utils.aoa_to_sheet([qaHeaders, ...qaRows])
   XLSX.utils.book_append_sheet(wb, ws3, 'Data Quality')
 
-  const safeParty = String(partyName || 'Party').replace(/[^\w.-]+/g, '_')
-  XLSX.writeFile(wb, `LedgerMatch_${safeParty}_${recoDate}.xlsx`)
+  const safeParty = String(finalPartyName).replace(/[^\w.-]+/g, '_')
+  XLSX.writeFile(wb, `LedgerMatch_${safeParty}_${finalRecoDate}.xlsx`)
 }
 

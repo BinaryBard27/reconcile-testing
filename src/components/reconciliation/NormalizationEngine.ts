@@ -100,7 +100,14 @@ export function normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig = { 
         const rawVal = row?.[mapping.amountINR]
         const num = parseFloat(String(rawVal).replace(/,/g, ''))
         const rawAmt = isNaN(num) ? 0 : num
-        amount = Math.abs(rawAmt)
+        
+        if (logic === 'doctype' && entryType !== 'ignore') {
+          if (entryType === 'invoice') amount = Math.abs(rawAmt)
+          else if (entryType === 'payment' || entryType === 'credit_note') amount = -Math.abs(rawAmt)
+          else amount = rawAmt
+        } else {
+          amount = Math.abs(rawAmt)
+        }
         
         // Infer entryType from sign if not explicitly mapped
         if (!mapping.entryType) {

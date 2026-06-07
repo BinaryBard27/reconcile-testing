@@ -21,17 +21,17 @@ export default function Reconciliation() {
         <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
           <div className="card" style={{ cursor: 'pointer', transition: 'transform 0.2s' }} onClick={() => setMode('AUTO_RECO')}>
             <div style={{ fontSize: '2rem', marginBottom: 12 }}>⚡</div>
-            <h3>Auto Reco</h3>
+            <h3>Quick Reconcile</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: 8 }}>
-              Upload both files and let the system automatically detect formats, map columns, and reconcile everything for you.
+              Automatic matching — best for clean data
             </p>
           </div>
           
           <div className="card" style={{ cursor: 'pointer', transition: 'transform 0.2s' }} onClick={() => setMode('MANUAL_RECO')}>
             <div style={{ fontSize: '2rem', marginBottom: 12 }}>🛠️</div>
-            <h3>Manual Reco</h3>
+            <h3>Guided Reconciliation</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: 8 }}>
-              Upload files one by one, manually configure mapping, check data quality, and have full control over the process.
+              Step-by-step with full control — recommended
             </p>
           </div>
         </div>
@@ -61,9 +61,9 @@ export default function Reconciliation() {
       <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
         <div className="card" style={{ cursor: 'pointer', transition: 'transform 0.2s' }} onClick={() => setMode('CONVERT')}>
           <div style={{ fontSize: '2rem', marginBottom: 12 }}>🔄</div>
-          <h3>Data Conversion</h3>
+          <h3>Convert File Format</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: 8 }}>
-            Convert Tally, SAP, Zoho, or generic data into our standard Base Format.
+            Convert SAP, Tally or Zoho exports to standard format
           </p>
         </div>
         

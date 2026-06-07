@@ -80,7 +80,7 @@ export default function ColumnMapper({
   useEffect(() => {
     if (!headers || headers.length === 0) return
 
-    const cached = loadMapping(partyName, fileLabel)
+    const cached = loadMapping(partyName, fileLabel, headers)
     if (cached) {
       setMapping(cached.mapping || {})
       setEntryTypeMap(cached.entryTypeMap || {})
@@ -143,7 +143,7 @@ export default function ColumnMapper({
     if (msg) return setError(msg)
     setError('')
 
-    saveMapping(partyName, fileLabel, mapping, entryTypeMap, { amountLogic })
+    saveMapping(partyName, fileLabel, headers, mapping, entryTypeMap, { amountLogic })
     onMappingComplete(mapping, entryTypeMap, { amountLogic })
   }
 

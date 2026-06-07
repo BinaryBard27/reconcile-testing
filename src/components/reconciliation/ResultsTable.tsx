@@ -188,7 +188,7 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(r.ourAmount) || '\u2014'}</td>
                   <td>{fmtDate(r.partyDate) || '\u2014'}</td>
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(r.partyAmount) || '\u2014'}</td>
-                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(r.difference) || '\u2014'}</td>
+                  <td style={{ fontVariantNumeric: 'tabular-nums', color: (Number(r.difference) || 0) !== 0 ? 'var(--red)' : 'var(--green)' }}>{fmtMoney(r.difference) || '\u2014'}</td>
                   <td>{statusBadge(r.status)}</td>
                   <td style={{ minWidth: 220 }}>
                     <input
@@ -202,6 +202,22 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 'bold', background: 'var(--bg-elevated)' }}>
+                <td colSpan={2} style={{ textAlign: 'right', paddingRight: 16 }}>Totals for visible rows:</td>
+                <td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {fmtMoney(viewRows.reduce((acc, r) => acc + (Number(r.ourAmount) || 0), 0))}
+                </td>
+                <td></td>
+                <td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {fmtMoney(viewRows.reduce((acc, r) => acc + (Number(r.partyAmount) || 0), 0))}
+                </td>
+                <td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {fmtMoney(viewRows.reduce((acc, r) => acc + (Number(r.difference) || 0), 0))}
+                </td>
+                <td colSpan={2}></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
