@@ -17,6 +17,8 @@ export const MATCH_STATUS = {
   MISSING_IN_OURS: 'Missing in Our Books',
   DUPLICATE_EXPORT_ERROR: 'Duplicate Ref — Likely Export Error',
   DUPLICATE_CONFLICT: 'Duplicate Ref — Amount Conflict',
+  TDS_DEDUCTION: 'TDS Deduction',
+  TDS_MISMATCH: 'TDS Amount Mismatch',
 }
 
 export const STATUS_COLORS = {
@@ -29,5 +31,7 @@ export const STATUS_COLORS = {
   [MATCH_STATUS.MISSING_IN_OURS]: '#ef4444',
   [MATCH_STATUS.DUPLICATE_EXPORT_ERROR]: '#f97316',
   [MATCH_STATUS.DUPLICATE_CONFLICT]: '#ef4444',
+  'TDS Deduction': '#8b5cf6',
+  'TDS Amount Mismatch': '#f97316',
 }
 

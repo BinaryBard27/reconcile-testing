@@ -3,8 +3,8 @@ import ColumnMapper from './ColumnMapper'
 import DataQualityPanel from './DataQualityPanel'
 import { exportReconciliation } from './ExportEngine'
 import FileUpload from './FileUpload'
-import { detectDuplicates, normalizeRows, normalizeRef } from './NormalizationEngine'
-import { buildSummary, reconcileInvoices } from './ReconciliationEngine'
+import { detectDuplicates, normalizeRows, normalizeRef, separateOpeningBalance } from './NormalizationEngine'
+import { buildDetailedSummary, reconcileInvoices } from './ReconciliationEngine'
 import ResultsTable from './ResultsTable'
 
 const STEPS = [
@@ -109,6 +109,8 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
 
   const [ourNormalized, setOurNormalized] = useState<any>(null)
   const [partyNormalized, setPartyNormalized] = useState<any>(null)
+  const [ourOpeningBalance, setOurOpeningBalance] = useState<any[]>([])
+  const [partyOpeningBalance, setPartyOpeningBalance] = useState<any[]>([])
   const [ourIssues, setOurIssues] = useState<any>(null)
   const [partyIssues, setPartyIssues] = useState<any>(null)
 
@@ -135,15 +137,19 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
 
   function onOurMappingComplete(mapping: any, entryTypeMap: any, mappingConfig: any) {
     const norm = normalizeRows(ourRawRows, mapping, entryTypeMap, mappingConfig)
-    setOurNormalized(norm)
-    setOurIssues(buildIssues({ rawRows: ourRawRows, mapping, entryTypeMap, normalizedRows: norm }))
+    const { openingBalanceRows, transactionRows } = separateOpeningBalance(norm)
+    setOurNormalized(transactionRows)
+    setOurOpeningBalance(openingBalanceRows)
+    setOurIssues(buildIssues({ rawRows: ourRawRows, mapping, entryTypeMap, normalizedRows: transactionRows }))
     setStepIndex(2)
   }
 
   function onPartyMappingComplete(mapping: any, entryTypeMap: any, mappingConfig: any) {
     const norm = normalizeRows(partyRawRows, mapping, entryTypeMap, mappingConfig)
-    setPartyNormalized(norm)
-    setPartyIssues(buildIssues({ rawRows: partyRawRows, mapping, entryTypeMap, normalizedRows: norm }))
+    const { openingBalanceRows, transactionRows } = separateOpeningBalance(norm)
+    setPartyNormalized(transactionRows)
+    setPartyOpeningBalance(openingBalanceRows)
+    setPartyIssues(buildIssues({ rawRows: partyRawRows, mapping, entryTypeMap, normalizedRows: transactionRows }))
     setStepIndex(4)
   }
 
@@ -153,19 +159,26 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
     const cleanOur = autoRemoveExportDuplicates(ourNormalized ?? [], ourDupMap)
     const cleanParty = autoRemoveExportDuplicates(partyNormalized ?? [], partyDupMap)
     const res = reconcileInvoices(cleanOur, cleanParty)
-    const sum = buildSummary(res, cleanOur, cleanParty)
+    const sum = buildDetailedSummary(res, cleanOur, cleanParty, ourOpeningBalance, partyOpeningBalance)
     setResults(res)
     setSummary(sum)
     setStepIndex(5)
   }
 
-  function handleExport(viewRows: any, remarksByRef: any) {
-    const merged = (viewRows ?? results ?? []).map((r: any) => ({
-      ...r,
-      refNo: normalizeRef(r.refNo),
-      remarks: remarksByRef?.[r.refNo] ?? r.remarks ?? '',
-    }))
-    exportReconciliation(merged, summary, qualityIssues, partyName || 'Party', recoDate || todayISO())
+  function handleExport(viewRows: any, remarksByRef: any, actionStatuses: any) {
+    exportReconciliation(
+      results,
+      summary,
+      qualityIssues,
+      partyName || 'Party',
+      recoDate || todayISO(),
+      remarksByRef,
+      actionStatuses,
+      ourOpeningBalance,
+      partyOpeningBalance,
+      ourNormalized,
+      partyNormalized
+    )
   }
 
   return (

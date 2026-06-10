@@ -136,6 +136,28 @@ export function normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig = { 
     .filter(Boolean)
 }
 
+export type NormalizedRow = any
+
+export function separateOpeningBalance(rows: NormalizedRow[]) {
+  const openingKeywords = [
+    'opening', 'op bal', 'op.bal', 'o/b', 'ob ', 
+    'brought forward', 'b/f', 'balance b/d', 'balance brought'
+  ]
+  
+  const isOpeningBalance = (row: NormalizedRow) => {
+    if (row.entryType !== 'invoice') return false
+    const narr = String(row.narration || '').toLowerCase()
+    const hasKeyword = openingKeywords.some(k => narr.includes(k))
+    const isFirstRowNoRef = !row.refNo && row.amount > 0
+    return hasKeyword || isFirstRowNoRef
+  }
+
+  const openingBalanceRows = rows.filter(isOpeningBalance)
+  const transactionRows = rows.filter(r => !isOpeningBalance(r))
+
+  return { openingBalanceRows, transactionRows }
+}
+
 function runSelfTest() {
   const refs = [
     '246779414223.0',

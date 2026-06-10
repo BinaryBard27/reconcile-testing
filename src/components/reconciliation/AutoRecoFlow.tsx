@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import FileUpload from './FileUpload'
 import { detectFormatAndSuggestMapping } from './autoDetect'
-import { detectDuplicates, normalizeRows } from './NormalizationEngine'
-import { buildSummary, reconcileInvoices } from './ReconciliationEngine'
+import { detectDuplicates, normalizeRows, separateOpeningBalance } from './NormalizationEngine'
+import { buildDetailedSummary, reconcileInvoices } from './ReconciliationEngine'
 import ResultsTable from './ResultsTable'
 import { exportReconciliation } from './ExportEngine'
 
@@ -30,6 +30,11 @@ export default function AutoRecoFlow({ onBack }: { onBack: () => void }) {
   const [ourRaw, setOurRaw] = useState<any[] | null>(null)
   const [partyRaw, setPartyRaw] = useState<any[] | null>(null)
   
+  const [ourOpeningBalance, setOurOpeningBalance] = useState<any[]>([])
+  const [partyOpeningBalance, setPartyOpeningBalance] = useState<any[]>([])
+  const [ourNormalized, setOurNormalized] = useState<any[]>([])
+  const [partyNormalized, setPartyNormalized] = useState<any[]>([])
+
   const [results, setResults] = useState<any>(null)
   const [summary, setSummary] = useState<any>(null)
   const [error, setError] = useState('')
@@ -79,11 +84,19 @@ export default function AutoRecoFlow({ onBack }: { onBack: () => void }) {
       const ourNorm = normalizeRows(ourData, ourSuggest.suggestion, {}, { amountLogic: ourSuggest.suggestion.amountLogic })
       const partyNorm = normalizeRows(partyData, partySuggest.suggestion, {}, { amountLogic: partySuggest.suggestion.amountLogic })
 
-      const cleanOur = autoRemoveExportDuplicates(ourNorm, detectDuplicates(ourNorm))
-      const cleanParty = autoRemoveExportDuplicates(partyNorm, detectDuplicates(partyNorm))
+      const { openingBalanceRows: ourOB, transactionRows: ourTrans } = separateOpeningBalance(ourNorm)
+      const { openingBalanceRows: partyOB, transactionRows: partyTrans } = separateOpeningBalance(partyNorm)
+      
+      setOurOpeningBalance(ourOB)
+      setPartyOpeningBalance(partyOB)
+      setOurNormalized(ourTrans)
+      setPartyNormalized(partyTrans)
+
+      const cleanOur = autoRemoveExportDuplicates(ourTrans, detectDuplicates(ourTrans))
+      const cleanParty = autoRemoveExportDuplicates(partyTrans, detectDuplicates(partyTrans))
 
       const res = reconcileInvoices(cleanOur, cleanParty)
-      const sum = buildSummary(res, cleanOur, cleanParty)
+      const sum = buildDetailedSummary(res, cleanOur, cleanParty, ourOB, partyOB)
 
       setResults(res)
       setSummary(sum)
@@ -101,7 +114,19 @@ export default function AutoRecoFlow({ onBack }: { onBack: () => void }) {
           summary={summary}
           partyName="Auto_Detected_Party"
           recoDate={new Date().toISOString().split('T')[0]}
-          onExport={() => exportReconciliation(results, summary, {}, 'Auto_Detected_Party', new Date().toISOString().split('T')[0])}
+          onExport={(viewRows, remarksByRef, actionStatuses) => exportReconciliation(
+            results,
+            summary,
+            {}, // qualityIssues
+            'Auto_Detected_Party',
+            new Date().toISOString().split('T')[0],
+            remarksByRef,
+            actionStatuses,
+            ourOpeningBalance,
+            partyOpeningBalance,
+            ourNormalized,
+            partyNormalized
+          )}
         />
       </div>
     )
