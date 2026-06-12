@@ -1,21 +1,23 @@
 import { useState, useEffect } from 'react'
+import Home from './components/Home'
 import Reconciliation from './components/Reconciliation'
 import NumberToWords from './components/NumberToWords'
 import GSTCalculator from './components/GSTCalculator'
 import DateCalculator from './components/DateCalculator'
 import PDFConverter from './components/PDFConverter'
 import './App.css'
+import './Header.css'
 
 const NAV_ITEMS = [
-  { id: 'reconcile', label: 'Reconciliation', icon: '⚖️', section: 'Core' },
-  { id: 'pdfconverter', label: 'Bank Statement to PDF Converter', icon: '📄', section: 'Tools' },
-  { id: 'num2words', label: 'Number to Words', icon: '🔢', section: 'Tools' },
-  { id: 'gst', label: 'GST Calculator', icon: '📈', section: 'Tools' },
-  { id: 'datecalc', label: 'Date Calculator', icon: '📅', section: 'Tools' },
+  { id: 'home', label: 'Home', icon: '🏠', section: 'MAIN' },
+  { id: 'reconcile', label: 'Match Transactions (PO Calculator)', icon: '🧾', section: 'TOOLS' },
+  { id: 'bankmatch', label: 'Bank to Bank Match', icon: '🏦', section: 'TOOLS' },
+  { id: 'getcalc', label: 'Get Calculator', icon: '🧮', section: 'TOOLS' },
+  { id: 'casecalc', label: 'Case Calculator', icon: '📅', section: 'TOOLS' },
 ]
 
 function App() {
-  const [activeTab, setActiveTab] = useState('reconcile')
+  const [activeTab, setActiveTab] = useState('home')
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('micro-theme') || 'light'
   })
@@ -31,8 +33,14 @@ function App() {
     <div className="app-layout">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="sidebar-brand-icon">{'\uD83D\uDCCA'}</div>
-          <span>MicroLedger</span>
+          <div className="sidebar-brand-icon blue-icon">
+             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+          </div>
+          <span>MixLedger</span>
         </div>
 
         <nav className="sidebar-nav">
@@ -56,23 +64,27 @@ function App() {
               </button>
             )
             return acc
-          }, [])}
+          }, [] as React.ReactNode[])}
         </nav>
-
-        <div className="sidebar-footer">
-          <button className="theme-toggle" onClick={toggleTheme}>
-            <span className="nav-icon">{theme === 'light' ? '\uD83C\uDF19' : '\u2600\uFE0F'}</span>
-            <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>
-          </button>
-        </div>
       </aside>
 
       <main className="main-content">
+        <div className="top-header">
+           <div className="top-header-right">
+             <button className="theme-toggle-btn" onClick={toggleTheme}>
+               {theme === 'light' ? '🌙' : '☀️'}
+             </button>
+           </div>
+        </div>
+        {activeTab === 'home' && <Home onNavigate={setActiveTab} />}
         {activeTab === 'reconcile' && <Reconciliation />}
         {activeTab === 'pdfconverter' && <PDFConverter />}
         {activeTab === 'num2words' && <NumberToWords />}
         {activeTab === 'gst' && <GSTCalculator />}
         {activeTab === 'datecalc' && <DateCalculator />}
+        {activeTab === 'bankmatch' && <div className="page-title"><h1>Bank to Bank Match</h1><p>Tool under construction</p></div>}
+        {activeTab === 'getcalc' && <div className="page-title"><h1>Get Calculator</h1><p>Tool under construction</p></div>}
+        {activeTab === 'casecalc' && <div className="page-title"><h1>Case Calculator</h1><p>Tool under construction</p></div>}
       </main>
     </div>
   )

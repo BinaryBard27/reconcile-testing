@@ -1,0 +1,149 @@
+.home-dashboard {
+  padding: 10px;
+  max-width: 1200px;
+}
+
+.home-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 40px;
+}
+
+.home-header h1 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.home-header p {
+  color: var(--text-muted);
+  font-size: 1rem;
+  margin: 0;
+}
+
+.home-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
+}
+
+.home-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+  border: 1px solid var(--border-light);
+}
+
+.home-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.home-card-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.home-card-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.blue-icon {
+  background: #eff6ff; /* light blue */
+  color: #2563eb;
+}
+.blue-icon path[fill] {
+  fill: #2563eb;
+}
+.blue-icon path[stroke] {
+  stroke: #ffffff;
+}
+
+.orange-icon {
+  background: #fff7ed; /* light orange */
+  color: #ea580c;
+  border: 1px solid #ffedd5;
+}
+
+.home-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.home-card-content h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.home-card-content p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.home-card-arrow {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.blue-arrow {
+  background: #eff6ff;
+  color: #3b82f6;
+}
+
+.orange-arrow {
+  background: #fff7ed;
+  color: #f97316;
+}
+
+/* Update sidebar specific styles */
+[data-theme='dark'] .home-card {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+[data-theme='dark'] .blue-icon {
+  background: #1e3a8a;
+}
+[data-theme='dark'] .blue-icon path[fill] {
+  fill: #60a5fa;
+}
+[data-theme='dark'] .orange-icon {
+  background: #431407;
+  border-color: #7c2d12;
+}
+[data-theme='dark'] .blue-arrow {
+  background: #1e3a8a;
+}
+[data-theme='dark'] .orange-arrow {
+  background: #431407;
+}
+
+@media (max-width: 768px) {
+  .home-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
