@@ -192,7 +192,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
       {stepIndex === 0 && (
         <div className="card">
           <h2>Step 1: Upload Our Books</h2>
-          <FileUpload onFileLoaded={handleOurFileLoaded} />
+          <FileUpload onFileLoaded={handleOurFileLoaded} singleMode title="Upload Our Books" fileKey="our" />
         </div>
       )}
 
@@ -212,7 +212,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
       {stepIndex === 2 && (
         <div className="card">
           <h2>Step 3: Upload Customer Books</h2>
-          <FileUpload onFileLoaded={handlePartyFileLoaded} />
+          <FileUpload onFileLoaded={handlePartyFileLoaded} singleMode title="Upload Customer / Party Books" fileKey="party" />
         </div>
       )}
 

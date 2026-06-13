@@ -211,7 +211,23 @@ function UploadCard({ title, fileKey, onFileLoaded }) {
   )
 }
 
-export default function FileUpload({ onFileLoaded }) {
+type FileUploadProps = {
+  onFileLoaded: (fileKey: string, rows: any[], headers: string[], file: File) => void
+  singleMode?: boolean
+  fileKey?: string
+  title?: string
+}
+
+export default function FileUpload({ onFileLoaded, singleMode, fileKey, title }: FileUploadProps) {
+  if (singleMode) {
+    return (
+      <div>
+        <div className="upload-grid" style={{ gridTemplateColumns: '1fr' }}>
+          <UploadCard title={title || "Upload"} fileKey={fileKey || "upload"} onFileLoaded={onFileLoaded} />
+        </div>
+      </div>
+    )
+  }
   return (
     <div>
       <div className="upload-grid">
