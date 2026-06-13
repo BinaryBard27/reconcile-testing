@@ -84,10 +84,13 @@ export function normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig = { 
 
       // Amount: handle debit/credit columns or single amount column
       let amount = 0
+      let debit = 0
+      let credit = 0
+      let rawAmt: number | undefined = undefined
       
       if (logic === 'separate' && mapping.debitAmount && mapping.creditAmount) {
-        const debit = normalizeAmount(row?.[mapping.debitAmount])
-        const credit = normalizeAmount(row?.[mapping.creditAmount])
+        debit = normalizeAmount(row?.[mapping.debitAmount])
+        credit = normalizeAmount(row?.[mapping.creditAmount])
         
         // Infer entryType from separate columns if not explicitly mapped
         if (!mapping.entryType) {
@@ -99,7 +102,7 @@ export function normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig = { 
       } else if (mapping.amountINR) {
         const rawVal = row?.[mapping.amountINR]
         const num = parseFloat(String(rawVal).replace(/,/g, ''))
-        const rawAmt = isNaN(num) ? 0 : num
+        rawAmt = isNaN(num) ? 0 : num
         
         if (logic === 'doctype' && entryType !== 'ignore') {
           if (entryType === 'invoice') amount = Math.abs(rawAmt)
@@ -112,6 +115,17 @@ export function normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig = { 
         // Infer entryType from sign if not explicitly mapped
         if (!mapping.entryType) {
           entryType = rawAmt < 0 ? 'payment' : 'invoice'
+        }
+      }
+
+      if (!mapping.entryType) {
+        // No entry type column mapped — infer from amount sign or default to invoice
+        if (mapping.amountINR && rawAmt !== undefined) {
+          entryType = rawAmt < 0 ? 'payment' : 'invoice'
+        } else if (logic === 'separate') {
+          entryType = debit > 0 ? 'invoice' : credit > 0 ? 'payment' : 'ignore'
+        } else {
+          entryType = 'invoice' // default to invoice if cannot determine
         }
       }
 
@@ -148,8 +162,7 @@ export function separateOpeningBalance(rows: NormalizedRow[]) {
     if (row.entryType !== 'invoice') return false
     const narr = String(row.narration || '').toLowerCase()
     const hasKeyword = openingKeywords.some(k => narr.includes(k))
-    const isFirstRowNoRef = !row.refNo && row.amount > 0
-    return hasKeyword || isFirstRowNoRef
+    return hasKeyword
   }
 
   const openingBalanceRows = rows.filter(isOpeningBalance)
@@ -174,4 +187,4 @@ function runSelfTest() {
   console.log(parseDate('31/03/2025')) // Tally format
   console.log(parseDate('2025-03-31')) // Clean ISO
 }
-runSelfTest()
+if (import.meta.env.DEV) runSelfTest()

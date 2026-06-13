@@ -5,6 +5,7 @@ const TABS = [
   { key: 'ALL', label: 'All' },
   { key: 'MATCHED', label: 'Matched' },
   { key: 'MISMATCH', label: 'Mismatches' },
+  { key: 'TDS', label: 'TDS Deductions' },
   { key: 'MISSING', label: 'Missing' },
   { key: 'POSSIBLE', label: 'Possible Matches' },
   { key: 'DUPLICATES', label: 'Duplicates' },
@@ -27,7 +28,10 @@ function fmtDate(d) {
 }
 
 function statusBadge(status) {
-  const bg = STATUS_COLORS[status] ?? 'rgba(255,255,255,0.08)'
+  let bg = STATUS_COLORS[status]
+  if (!bg && String(status).startsWith('TDS Deduction')) bg = '#8b5cf6'
+  if (!bg && String(status).startsWith('TDS Amount')) bg = '#f97316'
+  if (!bg) bg = 'rgba(255,255,255,0.08)'
   return (
     <span
       className="badge"
@@ -113,6 +117,7 @@ function applyTabFilter(row, tabKey) {
   if (tabKey === 'ALL') return true
   if (tabKey === 'MATCHED') return row.status === MATCH_STATUS.MATCHED
   if (tabKey === 'MISMATCH') return String(row.status).includes('Mismatch')
+  if (tabKey === 'TDS') return String(row.status).startsWith('TDS')
   if (tabKey === 'MISSING')
     return row.status === MATCH_STATUS.MISSING_IN_PARTY || row.status === MATCH_STATUS.MISSING_IN_OURS
   if (tabKey === 'POSSIBLE')

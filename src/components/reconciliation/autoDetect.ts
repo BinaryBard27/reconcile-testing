@@ -47,7 +47,7 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
   }
 
   const suggestion: MappingSuggestion = {
-    refNo: findHeader(['ref', 'invoice', 'vch no', 'document no', 'assignment']),
+    refNo: findHeader(['vch no', 'invoice no', 'document no', 'assignment', 'ref no', 'ref']),
     entryType: findHeader(['vch type', 'document type', 'type', 'transaction type']),
     date: findHeader(['date', 'posting date', 'document date']),
     amountINR: '',
