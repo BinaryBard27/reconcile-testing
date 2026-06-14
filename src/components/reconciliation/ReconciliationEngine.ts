@@ -102,7 +102,8 @@ export function reconcileInvoices(ourRows, partyRows) {
         status = MATCH_STATUS.MATCHED
       } else if (diff > 0) {
         status = MATCH_STATUS.AMOUNT_MISMATCH_UNDER // party booked less
-        const tds = detectTDS(ourAmt, partyAmt, ourRow.narration || party.narration)
+        const combinedNarration = (ourRow.narration || '') + ' ' + (party.narration || '')
+        const tds = detectTDS(ourAmt, partyAmt, combinedNarration)
         if (tds.isTDS) {
           status = `TDS Deduction — ${tds.tdsSection}`
           tdsData = {
