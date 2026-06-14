@@ -300,6 +300,11 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <button className="btn btn-secondary" onClick={onBack}>Back to Hub</button>
+        {stepIndex > 0 && (
+          <button className="btn btn-secondary" onClick={() => setStepIndex(stepIndex - 1)}>
+            ← Previous Step
+          </button>
+        )}
       </div>
 
       <ProgressBar stepIndex={stepIndex} />
