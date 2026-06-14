@@ -17,7 +17,6 @@ export function detectTDS(ourAmount: number, partyAmount: number, narration: str
   actualDeduction: number
 } {
   const diff = ourAmount - partyAmount
-  console.log('TDS check:', ourAmount, partyAmount, diff, 'sections tried:', TDS_SECTIONS.map(s => s.section + ':' + (ourAmount * s.rate).toFixed(2)))
   if (diff <= 0) return { isTDS: false, tdsSection: '', tdsRate: 0, expectedTDS: 0, actualDeduction: 0 }
 
   const narr = (narration || '').toLowerCase()

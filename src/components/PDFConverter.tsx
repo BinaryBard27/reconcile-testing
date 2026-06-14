@@ -75,15 +75,17 @@ export default function PDFConverter() {
 
   const handleExportCSV = () => {
     if (!results) return
-    const headers = ['Date', 'Description', 'Amount', 'Type']
+    const headers = ['Date', 'Description', 'Debit', 'Credit']
     const csvRows = [headers.join(',')]
     
     for (const row of results) {
+      const isDebit = row.type === 'Debit' || row.amount < 0
+      const absAmount = Math.abs(row.amount)
       const values = [
         row.date,
         `"${row.description}"`, // wrap in quotes in case of commas
-        row.amount,
-        row.type
+        isDebit ? absAmount : '',
+        !isDebit ? absAmount : ''
       ]
       csvRows.push(values.join(','))
     }
@@ -198,25 +200,26 @@ export default function PDFConverter() {
                 <tr>
                   <th style={{ padding: '12px 24px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Date</th>
                   <th style={{ padding: '12px 24px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Description</th>
-                  <th style={{ padding: '12px 24px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Amount</th>
-                  <th style={{ padding: '12px 24px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Type</th>
+                  <th style={{ padding: '12px 24px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Debit</th>
+                  <th style={{ padding: '12px 24px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Credit</th>
                 </tr>
               </thead>
               <tbody>
-                {results.map((r, i) => (
+                {results.map((r, i) => {
+                  const isDebit = r.type === 'Debit' || r.amount < 0
+                  const absAmount = Math.abs(r.amount)
+                  return (
                   <tr key={i} style={{ borderBottom: '1px solid var(--border-light)' }}>
                     <td style={{ padding: '12px 24px', fontSize: '0.85rem' }}>{r.date}</td>
                     <td style={{ padding: '12px 24px', fontSize: '0.85rem' }}>{r.description}</td>
-                    <td style={{ padding: '12px 24px', fontSize: '0.85rem', fontWeight: 600, color: r.amount < 0 ? 'var(--red)' : 'var(--text-h)' }}>
-                      {r.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    <td style={{ padding: '12px 24px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--red)' }}>
+                      {isDebit ? absAmount.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
                     </td>
-                    <td style={{ padding: '12px 24px', fontSize: '0.85rem' }}>
-                      <span className="badge" style={{ background: r.type === 'Credit' ? 'var(--green-bg)' : 'var(--red-bg)', color: r.type === 'Credit' ? 'var(--green)' : 'var(--red)' }}>
-                        {r.type}
-                      </span>
+                    <td style={{ padding: '12px 24px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--green)' }}>
+                      {!isDebit ? absAmount.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>

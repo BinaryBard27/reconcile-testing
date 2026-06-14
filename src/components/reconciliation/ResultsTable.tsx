@@ -52,7 +52,7 @@ function statusBadge(status) {
   )
 }
 
-function SummaryStatement({ summary, recoDate, partyName }) {
+function SummaryStatement({ summary, recoDate, partyName, sym }: any) {
   if (!summary) return null
 
   return (
@@ -68,36 +68,36 @@ function SummaryStatement({ summary, recoDate, partyName }) {
           <tbody>
             <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
               <td style={{ padding: '8px 0' }}>Balance as per Party Books</td>
-              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>₹ {fmtMoney(summary.partyNetBalance)}</td>
+              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{sym} {fmtMoney(summary.partyNetBalance)}</td>
             </tr>
             <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
               <td style={{ padding: '8px 0' }}>Add: Invoices not in Party Books</td>
-              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>₹ {fmtMoney(summary.invoicesNotInParty)}</td>
+              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{sym} {fmtMoney(summary.invoicesNotInParty)}</td>
             </tr>
             <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
               <td style={{ padding: '8px 0' }}>Add: TDS to be booked</td>
-              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>₹ {fmtMoney(summary.tdsToBeBooked)}</td>
+              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{sym} {fmtMoney(summary.tdsToBeBooked)}</td>
             </tr>
             <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
               <td style={{ padding: '8px 0' }}>Less: Invoices not in Our Books</td>
-              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>₹ {fmtMoney(summary.invoicesNotInOurs)}</td>
+              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{sym} {fmtMoney(summary.invoicesNotInOurs)}</td>
             </tr>
             <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
               <td style={{ padding: '8px 0' }}>Less: Amount Differences</td>
-              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>₹ {fmtMoney(summary.amountDifferences)}</td>
+              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{sym} {fmtMoney(summary.amountDifferences)}</td>
             </tr>
             <tr>
               <td style={{ padding: '12px 0 4px', fontWeight: 700 }}>Derived Balance</td>
-              <td style={{ padding: '12px 0 4px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>₹ {fmtMoney(summary.derivedBalance)}</td>
+              <td style={{ padding: '12px 0 4px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{sym} {fmtMoney(summary.derivedBalance)}</td>
             </tr>
             <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
               <td style={{ padding: '4px 0 12px', fontWeight: 700 }}>Balance as per Our Books</td>
-              <td style={{ padding: '4px 0 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>₹ {fmtMoney(summary.ourNetBalance)}</td>
+              <td style={{ padding: '4px 0 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{sym} {fmtMoney(summary.ourNetBalance)}</td>
             </tr>
             <tr>
               <td style={{ padding: '12px 0 0', fontWeight: 700 }}>Difference</td>
               <td style={{ padding: '12px 0 0', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: (summary.finalDifference || 0) !== 0 ? 'var(--red)' : 'var(--green)' }}>
-                ₹ {fmtMoney(summary.finalDifference)}
+                {sym} {fmtMoney(summary.finalDifference)}
               </td>
             </tr>
           </tbody>
@@ -203,6 +203,9 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
     setSortDir('asc')
   }
 
+  const primaryCurrency = (results && results.length > 0) ? results[0].ourCurrency || 'INR' : 'INR'
+  const sym = currencySymbol(primaryCurrency)
+
   return (
     <div>
       <header className="app-header">
@@ -213,7 +216,7 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
         </p>
       </header>
 
-      <SummaryStatement summary={summary} recoDate={recoDate} partyName={partyName} />
+      <SummaryStatement summary={summary} recoDate={recoDate} partyName={partyName} sym={sym} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16, marginBottom: 12 }}>
         {TABS.map((t) => (
