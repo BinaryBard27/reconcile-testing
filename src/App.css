@@ -611,3 +611,34 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ── Slide-in Panel Animation ── */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ── Detection Panel ── */
+.detection-panel {
+  margin-top: 14px;
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-light);
+  background: var(--bg-elevated);
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+.detection-panel.detection-success {
+  border-color: var(--green);
+  background: var(--green-bg);
+}
+.detection-panel.detection-warning {
+  border-color: var(--yellow);
+  background: var(--yellow-bg);
+}

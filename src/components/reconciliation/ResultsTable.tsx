@@ -18,6 +18,12 @@ function fmtMoney(n) {
   return num.toLocaleString('en-IN', { maximumFractionDigits: 2 })
 }
 
+function currencySymbol(code: string): string {
+  if (code === 'USD') return '$'
+  if (code === 'EUR') return '€'
+  return '₹'
+}
+
 function fmtDate(d) {
   if (!d) return ''
   try {
@@ -263,9 +269,9 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
                 <tr key={`${r.refNo}-${r.status}-${idx}`}>
                   <td style={{ fontWeight: 700 }}>{r.rawRefNo || r.refNo}</td>
                   <td>{fmtDate(r.ourDate) || '\u2014'}</td>
-                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(r.ourAmount) || '\u2014'}</td>
+                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.ourAmount ? `${currencySymbol(r.ourCurrency || 'INR')} ${fmtMoney(r.ourAmount)}` : '\u2014'}</td>
                   <td>{fmtDate(r.partyDate) || '\u2014'}</td>
-                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(r.partyAmount) || '\u2014'}</td>
+                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.partyAmount ? `${currencySymbol(r.partyCurrency || 'INR')} ${fmtMoney(r.partyAmount)}` : '\u2014'}</td>
                   <td style={{ fontVariantNumeric: 'tabular-nums', color: (Number(r.difference) || 0) !== 0 ? 'var(--red)' : 'var(--green)' }}>{fmtMoney(r.difference) || '\u2014'}</td>
                   <td>{statusBadge(r.status)}</td>
                   <td style={{ minWidth: 180 }}>

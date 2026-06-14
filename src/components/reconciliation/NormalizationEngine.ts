@@ -65,12 +65,40 @@ export function detectDuplicates(rows) {
   return duplicates
 }
 
-export function normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig = { amountLogic: 'signed' }) {
+function detectCurrencyFromHeader(header: string): 'INR' | 'USD' | 'EUR' | null {
+  const h = (header || '').toUpperCase()
+  if (h.includes('USD') || h.includes('$')) return 'USD'
+  if (h.includes('EUR') || h.includes('€')) return 'EUR'
+  if (h.includes('INR') || h.includes('₹') || h.includes('RS')) return 'INR'
+  return null
+}
+
+export function normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig = { amountLogic: 'separate' }) {
   // rawRows: parsed CSV/Excel rows (array of objects)
   // mapping: { refNo, entryType, date, debitAmount, creditAmount, amountINR, ... }
   // entryTypeMap: { 'DR': 'invoice', 'DZ': 'payment', ... }
   
-  const logic = mappingConfig?.amountLogic || 'signed'
+  const logic = mappingConfig?.amountLogic || 'separate'
+
+  // Detect currency from column headers
+  let primaryCurrency: 'INR' | 'USD' | 'EUR' = 'INR'
+  if (mapping.amountINR) {
+    const detected = detectCurrencyFromHeader(mapping.amountINR)
+    if (detected) primaryCurrency = detected
+  }
+  if (mapping.debitAmount) {
+    const detected = detectCurrencyFromHeader(mapping.debitAmount)
+    if (detected) primaryCurrency = detected
+  }
+
+  // Check if USD column has data
+  let hasUSDData = false
+  if (mapping.amountUSD) {
+    hasUSDData = (rawRows ?? []).some(row => {
+      const val = normalizeAmount(row?.[mapping.amountUSD])
+      return val > 0
+    })
+  }
 
   return (rawRows ?? [])
     .map((row, idx) => {
@@ -133,6 +161,12 @@ export function normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig = { 
 
       const amountUSD = mapping.amountUSD ? normalizeAmount(row?.[mapping.amountUSD]) : 0
 
+      // Determine detected currency for this row
+      let detectedCurrency: 'INR' | 'USD' | 'EUR' = primaryCurrency
+      if (hasUSDData && amountUSD > 0) {
+        detectedCurrency = 'USD'
+      }
+
       return {
         originalIndex: idx,
         refNo: normalizeRef(row?.[mapping.refNo]),
@@ -140,7 +174,9 @@ export function normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig = { 
         entryType,
         date: parseDate(row?.[mapping.date]),
         amount,
+        amountINR: primaryCurrency === 'INR' ? amount : 0,
         amountUSD,
+        detectedCurrency,
         narration: row?.[mapping.narration] || '',
         utr: mapping.utr ? row?.[mapping.utr] || '' : '',
         clearedStatus: mapping.clearedStatus ? row?.[mapping.clearedStatus] || '' : '',

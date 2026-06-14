@@ -9,7 +9,7 @@ const TDS_SECTIONS = [
   { section: '194Q', rate: 0.001, keywords: ['purchase of goods'] },
 ]
 
-function detectTDS(ourAmount: number, partyAmount: number, narration: string): {
+export function detectTDS(ourAmount: number, partyAmount: number, narration: string): {
   isTDS: boolean
   tdsSection: string
   tdsRate: number
@@ -17,6 +17,7 @@ function detectTDS(ourAmount: number, partyAmount: number, narration: string): {
   actualDeduction: number
 } {
   const diff = ourAmount - partyAmount
+  console.log('TDS check:', ourAmount, partyAmount, diff, 'sections tried:', TDS_SECTIONS.map(s => s.section + ':' + (ourAmount * s.rate).toFixed(2)))
   if (diff <= 0) return { isTDS: false, tdsSection: '', tdsRate: 0, expectedTDS: 0, actualDeduction: 0 }
 
   const narr = (narration || '').toLowerCase()
@@ -81,16 +82,27 @@ export function reconcileInvoices(ourRows, partyRows) {
       const partyIdx = partyInvoices.indexOf(party)
       matchedPartyIndexes.add(partyIdx)
 
-      const diff = Math.abs(ourRow.amount) - Math.abs(party.amount)
-      const pctDiff = ourRow.amount > 0 ? Math.abs(diff) / Math.abs(ourRow.amount) : 0
+      const ourCurrency = ourRow.detectedCurrency || 'INR'
+      const partyCurrency = party.detectedCurrency || 'INR'
+      const currencyMismatch = ourCurrency !== partyCurrency
+
+      // Use INR amounts when currencies differ, direct amounts otherwise
+      const ourAmt = Math.abs(ourRow.amount)
+      const partyAmt = Math.abs(party.amount)
+
+      const diff = ourAmt - partyAmt
+      const pctDiff = ourAmt > 0 ? Math.abs(diff) / ourAmt : 0
 
       let status
       let tdsData = {}
-      if (Math.abs(diff) < 0.5 || pctDiff < 0.001) {
+
+      if (currencyMismatch) {
+        status = 'Currency Mismatch — verify exchange rate'
+      } else if (Math.abs(diff) < 0.5 || pctDiff < 0.001) {
         status = MATCH_STATUS.MATCHED
       } else if (diff > 0) {
         status = MATCH_STATUS.AMOUNT_MISMATCH_UNDER // party booked less
-        const tds = detectTDS(Math.abs(ourRow.amount), Math.abs(party.amount), ourRow.narration || party.narration)
+        const tds = detectTDS(ourAmt, partyAmt, ourRow.narration || party.narration)
         if (tds.isTDS) {
           status = `TDS Deduction — ${tds.tdsSection}`
           tdsData = {
@@ -108,15 +120,17 @@ export function reconcileInvoices(ourRows, partyRows) {
         refNo: ourRow.refNo,
         rawRefNo: ourRow.rawRefNo,
         ourDate: ourRow.date,
-        ourAmount: Math.abs(ourRow.amount),
-        ourAmountUSD: Math.abs(ourRow.amountUSD),
+        ourAmount: ourAmt,
+        ourAmountUSD: Math.abs(ourRow.amountUSD || 0),
+        ourCurrency,
         ourNarration: ourRow.narration,
         partyDate: party.date,
-        partyAmount: Math.abs(party.amount),
+        partyAmount: partyAmt,
+        partyCurrency,
         partyNarration: party.narration,
-        difference: diff,
+        difference: currencyMismatch ? 0 : diff,
         status,
-        remarks: '',
+        remarks: currencyMismatch ? `Our: ${ourCurrency}, Party: ${partyCurrency}` : '',
         matchType: 'exact',
         ...tdsData,
       })
@@ -152,10 +166,12 @@ export function reconcileInvoices(ourRows, partyRows) {
             rawRefNo: ourRow.rawRefNo,
             ourDate: ourRow.date,
             ourAmount: Math.abs(ourRow.amount),
-            ourAmountUSD: Math.abs(ourRow.amountUSD),
+            ourAmountUSD: Math.abs(ourRow.amountUSD || 0),
+            ourCurrency: ourRow.detectedCurrency || 'INR',
             ourNarration: ourRow.narration,
             partyDate: party.date,
             partyAmount: Math.abs(party.amount),
+            partyCurrency: party.detectedCurrency || 'INR',
             partyNarration: party.narration,
             difference: Math.abs(ourRow.amount) - Math.abs(party.amount),
             status: MATCH_STATUS.POSSIBLE_TYPO,
@@ -189,10 +205,12 @@ export function reconcileInvoices(ourRows, partyRows) {
         rawRefNo: ourRow.rawRefNo,
         ourDate: ourRow.date,
         ourAmount: Math.abs(ourRow.amount),
-        ourAmountUSD: Math.abs(ourRow.amountUSD),
+        ourAmountUSD: Math.abs(ourRow.amountUSD || 0),
+        ourCurrency: ourRow.detectedCurrency || 'INR',
         ourNarration: ourRow.narration,
         partyDate: amountDateMatch.date,
         partyAmount: Math.abs(amountDateMatch.amount),
+        partyCurrency: amountDateMatch.detectedCurrency || 'INR',
         partyNarration: amountDateMatch.narration,
         difference: 0,
         status: MATCH_STATUS.MATCHED_BY_AMOUNT_DATE,
@@ -205,10 +223,12 @@ export function reconcileInvoices(ourRows, partyRows) {
         rawRefNo: ourRow.rawRefNo,
         ourDate: ourRow.date,
         ourAmount: Math.abs(ourRow.amount),
-        ourAmountUSD: Math.abs(ourRow.amountUSD),
+        ourAmountUSD: Math.abs(ourRow.amountUSD || 0),
+        ourCurrency: ourRow.detectedCurrency || 'INR',
         ourNarration: ourRow.narration,
         partyDate: null,
         partyAmount: 0,
+        partyCurrency: 'INR',
         partyNarration: '',
         difference: Math.abs(ourRow.amount),
         status: MATCH_STATUS.MISSING_IN_PARTY,
@@ -227,9 +247,11 @@ export function reconcileInvoices(ourRows, partyRows) {
         ourDate: null,
         ourAmount: 0,
         ourAmountUSD: 0,
+        ourCurrency: 'INR',
         ourNarration: '',
         partyDate: p.date,
         partyAmount: Math.abs(p.amount),
+        partyCurrency: p.detectedCurrency || 'INR',
         partyNarration: p.narration,
         difference: -Math.abs(p.amount),
         status: MATCH_STATUS.MISSING_IN_OURS,

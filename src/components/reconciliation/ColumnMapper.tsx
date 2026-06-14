@@ -70,7 +70,7 @@ export default function ColumnMapper({
     debitAmount: '', creditAmount: '', narration: '', utr: ''
   }))
 
-  const [amountLogic, setAmountLogic] = useState<'signed' | 'separate' | 'doctype'>('signed')
+  const [amountLogic, setAmountLogic] = useState<'separate' | 'doctype'>('separate')
   const [entryTypeMap, setEntryTypeMap] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
   const [detectedFormat, setDetectedFormat] = useState<DetectedFormat | null>(null)
@@ -84,7 +84,7 @@ export default function ColumnMapper({
     if (cached) {
       setMapping(cached.mapping || {})
       setEntryTypeMap(cached.entryTypeMap || {})
-      setAmountLogic(cached.mappingConfig?.amountLogic || 'signed')
+      setAmountLogic(cached.mappingConfig?.amountLogic === 'doctype' ? 'doctype' : 'separate')
       setLoadedFromCache(true)
       return
     }
@@ -129,7 +129,7 @@ export default function ColumnMapper({
     if (amountLogic === 'separate' && (!mapping.debitAmount || !mapping.creditAmount)) {
       return 'Please map both Debit and Credit columns.'
     }
-    if (amountLogic !== 'separate' && !mapping.amountINR) {
+    if (amountLogic === 'doctype' && !mapping.amountINR) {
       return 'Please map the Amount column.'
     }
     if (amountLogic === 'doctype' && !mapping.entryType) {
@@ -174,7 +174,7 @@ export default function ColumnMapper({
         <p>Select how columns map into LedgerMatch’s standard format.</p>
         {detectedFormat && detectedFormat !== 'GENERIC' && !loadedFromCache && (
           <div className="status-pill status-Matched" style={{ display: 'inline-block', marginTop: 4 }}>
-            Auto-detected: {detectedFormat} Format
+            Auto-detected: {detectedFormat === 'CUSTOM' ? 'Custom Format — please verify' : `${detectedFormat} Format`}
           </div>
         )}
         {loadedFromCache && (
@@ -190,7 +190,6 @@ export default function ColumnMapper({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3>Amount Logic</h3>
           <select value={amountLogic} onChange={(e: any) => setAmountLogic(e.target.value)}>
-            <option value="signed">Single Column (+/- Signed)</option>
             <option value="separate">Separate Debit / Credit Columns</option>
             <option value="doctype">Sign depends on Doc Type (SAP style)</option>
           </select>
@@ -203,7 +202,7 @@ export default function ColumnMapper({
           {FIELD_DEFS.map((f) => {
             const isAmountCol = f.key === 'amountINR' || f.key === 'debitAmount' || f.key === 'creditAmount'
             if (amountLogic === 'separate' && f.key === 'amountINR') return null
-            if (amountLogic !== 'separate' && (f.key === 'debitAmount' || f.key === 'creditAmount')) return null
+            if (amountLogic === 'doctype' && (f.key === 'debitAmount' || f.key === 'creditAmount')) return null
             if (amountLogic === 'doctype' && f.key === 'entryType') f.required = true
 
             return (

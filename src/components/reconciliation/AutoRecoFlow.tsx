@@ -1,132 +1,175 @@
 import { useState } from 'react'
 import FileUpload from './FileUpload'
+import ColumnMapper from './ColumnMapper'
 import { detectFormatAndSuggestMapping } from './autoDetect'
-import { detectDuplicates, normalizeRows, separateOpeningBalance } from './NormalizationEngine'
-import { buildDetailedSummary, reconcileInvoices } from './ReconciliationEngine'
-import ResultsTable from './ResultsTable'
-import { exportReconciliation } from './ExportEngine'
+import { normalizeRows } from './NormalizationEngine'
+import * as XLSX from 'xlsx'
 
-function autoRemoveExportDuplicates(rows: any[], duplicatesMap: any) {
-  const exportRefs = new Set(
-    Object.entries(duplicatesMap || {})
-      .filter(([, v]: any) => v?.type === 'EXPORT_ERROR')
-      .map(([ref]) => ref)
-  )
-  if (exportRefs.size === 0) return rows
+const STANDARD_COLUMNS = [
+  'Reference No',
+  'Entry Type',
+  'Date',
+  'Amount INR',
+  'Amount USD',
+  'Currency',
+  'Narration',
+  'Cleared Status',
+]
 
-  const seen = new Set()
-  const out = []
-  for (const r of rows || []) {
-    if (!r.refNo) { out.push(r); continue }
-    if (!exportRefs.has(r.refNo)) { out.push(r); continue }
-    if (seen.has(r.refNo)) continue
-    seen.add(r.refNo)
-    out.push(r)
+function formatDate(d: any): string {
+  if (!d) return ''
+  try {
+    const dt = d instanceof Date ? d : new Date(d)
+    if (isNaN(dt.getTime())) return ''
+    const y = dt.getFullYear()
+    const m = String(dt.getMonth() + 1).padStart(2, '0')
+    const day = String(dt.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  } catch {
+    return ''
   }
-  return out
+}
+
+function StandardPreviewTable({ rows }: { rows: any[] }) {
+  const preview = rows.slice(0, 10)
+
+  return (
+    <div style={{ overflowX: 'auto', marginTop: 20 }}>
+      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>
+        Preview — First {Math.min(10, rows.length)} of {rows.length} rows
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
+        <thead>
+          <tr>
+            {STANDARD_COLUMNS.map(col => (
+              <th key={col} style={{
+                background: 'var(--bg-elevated)', padding: '10px 14px',
+                fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.04em', color: 'var(--text-muted)', textAlign: 'left',
+                borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
+              }}>{col}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {preview.map((row, idx) => (
+            <tr key={idx} style={{ borderBottom: '1px solid var(--border-light)' }}>
+              <td style={{ padding: '10px 14px', fontSize: '0.85rem', fontWeight: 700 }}>{row['Reference No']}</td>
+              <td style={{ padding: '10px 14px', fontSize: '0.85rem' }}>{row['Entry Type']}</td>
+              <td style={{ padding: '10px 14px', fontSize: '0.85rem' }}>{row['Date']}</td>
+              <td style={{ padding: '10px 14px', fontSize: '0.85rem', fontVariantNumeric: 'tabular-nums' }}>
+                {row['Amount INR'] ? Number(row['Amount INR']).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : ''}
+              </td>
+              <td style={{ padding: '10px 14px', fontSize: '0.85rem', fontVariantNumeric: 'tabular-nums' }}>
+                {row['Amount USD'] ? Number(row['Amount USD']).toLocaleString('en-US', { maximumFractionDigits: 2 }) : ''}
+              </td>
+              <td style={{ padding: '10px 14px', fontSize: '0.85rem' }}>{row['Currency']}</td>
+              <td style={{ padding: '10px 14px', fontSize: '0.85rem', maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Narration']}</td>
+              <td style={{ padding: '10px 14px', fontSize: '0.85rem' }}>{row['Cleared Status']}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 export default function AutoRecoFlow({ onBack }: { onBack: () => void }) {
-  const [ourRaw, setOurRaw] = useState<any[] | null>(null)
-  const [partyRaw, setPartyRaw] = useState<any[] | null>(null)
-  
-  const [ourOpeningBalance, setOurOpeningBalance] = useState<any[]>([])
-  const [partyOpeningBalance, setPartyOpeningBalance] = useState<any[]>([])
-  const [ourNormalized, setOurNormalized] = useState<any[]>([])
-  const [partyNormalized, setPartyNormalized] = useState<any[]>([])
+  const [step, setStep] = useState<'UPLOAD' | 'MAP' | 'PREVIEW'>('UPLOAD')
+  const [rawRows, setRawRows] = useState<any[] | null>(null)
+  const [headers, setHeaders] = useState<string[]>([])
+  const [fileName, setFileName] = useState('')
+  const [standardRows, setStandardRows] = useState<any[]>([])
+  const [detectedFormat, setDetectedFormat] = useState('')
 
-  const [results, setResults] = useState<any>(null)
-  const [summary, setSummary] = useState<any>(null)
-  const [error, setError] = useState('')
+  function handleFileLoaded(_fileKey: string, parsedRows: any[], fileHeaders: string[], file: File) {
+    setRawRows(parsedRows)
+    setHeaders(fileHeaders)
+    setFileName(file.name)
 
-  function handleFileLoaded(fileKey: string, parsedRows: any[], headers: string[]) {
-    if (fileKey === 'our') setOurRaw(parsedRows)
-    else setPartyRaw(parsedRows)
-
-    const nextOur = fileKey === 'our' ? parsedRows : ourRaw
-    const nextParty = fileKey === 'party' ? parsedRows : partyRaw
-
-    if (nextOur && nextParty) {
-      runAutoReco(nextOur, headers, nextParty, headers) // We need both headers, wait. 
-      // FileUpload gives us headers but doesn't pass it here easily unless we store it.
-    }
-  }
-  
-  // Need to correctly capture headers
-  const [ourHeaders, setOurHeaders] = useState<string[]>([])
-  const [partyHeaders, setPartyHeaders] = useState<string[]>([])
-
-  function handleFileLoadedWrapper(fileKey: string, parsedRows: any[], headers: string[]) {
-    if (fileKey === 'our') {
-      setOurRaw(parsedRows)
-      setOurHeaders(headers)
-    } else {
-      setPartyRaw(parsedRows)
-      setPartyHeaders(headers)
-    }
+    const { format } = detectFormatAndSuggestMapping(fileHeaders, parsedRows)
+    setDetectedFormat(format)
+    setStep('MAP')
   }
 
-  function runAutoRecoAttempt() {
-    if (!ourRaw || !partyRaw) return
-    runAutoReco(ourRaw, ourHeaders, partyRaw, partyHeaders)
+  function handleMappingComplete(mapping: any, entryTypeMap: any, mappingConfig: any) {
+    const normalized = normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig)
+    
+    const stdRows = normalized.map((r: any) => ({
+      'Reference No': r.rawRefNo || r.refNo || '',
+      'Entry Type': r.entryType || '',
+      'Date': formatDate(r.date),
+      'Amount INR': r.detectedCurrency === 'INR' || !r.detectedCurrency ? r.amount : (r.amountINR || ''),
+      'Amount USD': r.amountUSD || (r.detectedCurrency === 'USD' ? r.amount : ''),
+      'Currency': r.detectedCurrency || 'INR',
+      'Narration': r.narration || '',
+      'Cleared Status': r.clearedStatus || '',
+    }))
+    
+    setStandardRows(stdRows)
+    setStep('PREVIEW')
   }
 
-  function runAutoReco(ourData: any[], ourH: string[], partyData: any[], partyH: string[]) {
-    setError('')
-    try {
-      const ourSuggest = detectFormatAndSuggestMapping(ourH, ourData)
-      const partySuggest = detectFormatAndSuggestMapping(partyH, partyData)
+  function downloadStandardFormat() {
+    const ws = XLSX.utils.json_to_sheet(standardRows, { header: STANDARD_COLUMNS })
 
-      if (!ourSuggest.suggestion.date || !partySuggest.suggestion.date) {
-        throw new Error("Could not auto-detect Date column in one or both files. Please use Manual Reco.")
-      }
+    // Set column widths
+    ws['!cols'] = STANDARD_COLUMNS.map(col => ({
+      wch: col === 'Narration' ? 40 : col === 'Reference No' ? 20 : 16
+    }))
 
-      const ourNorm = normalizeRows(ourData, ourSuggest.suggestion, {}, { amountLogic: ourSuggest.suggestion.amountLogic })
-      const partyNorm = normalizeRows(partyData, partySuggest.suggestion, {}, { amountLogic: partySuggest.suggestion.amountLogic })
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Standard Format')
 
-      const { openingBalanceRows: ourOB, transactionRows: ourTrans } = separateOpeningBalance(ourNorm)
-      const { openingBalanceRows: partyOB, transactionRows: partyTrans } = separateOpeningBalance(partyNorm)
-      
-      setOurOpeningBalance(ourOB)
-      setPartyOpeningBalance(partyOB)
-      setOurNormalized(ourTrans)
-      setPartyNormalized(partyTrans)
-
-      const cleanOur = autoRemoveExportDuplicates(ourTrans, detectDuplicates(ourTrans))
-      const cleanParty = autoRemoveExportDuplicates(partyTrans, detectDuplicates(partyTrans))
-
-      const res = reconcileInvoices(cleanOur, cleanParty)
-      const sum = buildDetailedSummary(res, cleanOur, cleanParty, ourOB, partyOB)
-
-      setResults(res)
-      setSummary(sum)
-    } catch (e: any) {
-      setError(e.message || "Auto-reco failed. Please try Manual Reco.")
-    }
+    const baseName = fileName.replace(/\.(csv|xlsx?)/i, '')
+    XLSX.writeFile(wb, `${baseName}_standard_format.xlsx`)
   }
 
-  if (results && summary) {
+  if (step === 'PREVIEW' && standardRows.length > 0) {
     return (
       <div className="card">
-        <button className="btn btn-secondary" onClick={onBack} style={{ marginBottom: 16 }}>Back to Hub</button>
-        <ResultsTable
-          results={results}
-          summary={summary}
-          partyName="Auto_Detected_Party"
-          recoDate={new Date().toISOString().split('T')[0]}
-          onExport={(viewRows, remarksByRef, actionStatuses) => exportReconciliation(
-            results,
-            summary,
-            {}, // qualityIssues
-            'Auto_Detected_Party',
-            new Date().toISOString().split('T')[0],
-            remarksByRef,
-            actionStatuses,
-            ourOpeningBalance,
-            partyOpeningBalance,
-            ourNormalized,
-            partyNormalized
-          )}
+        <button className="btn btn-secondary" onClick={() => setStep('MAP')} style={{ marginBottom: 16 }}>Back to Mapping</button>
+        
+        <header className="app-header" style={{ marginBottom: 16 }}>
+          <h1 style={{ fontSize: '1.25rem' }}>Standard Format Preview</h1>
+          <p>
+            Converted <strong>{fileName}</strong> ({detectedFormat} format) — <strong>{standardRows.length}</strong> rows standardized
+          </p>
+        </header>
+
+        <div className="results" style={{ marginBottom: 20 }}>
+          <StandardPreviewTable rows={standardRows} />
+        </div>
+
+        <div className="actions" style={{ justifyContent: 'flex-end' }}>
+          <button className="btn btn-success" onClick={downloadStandardFormat}>
+            Download Standard Format
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (step === 'MAP' && rawRows) {
+    return (
+      <div className="card">
+        <button className="btn btn-secondary" onClick={() => { setStep('UPLOAD'); setRawRows(null) }} style={{ marginBottom: 16 }}>Back</button>
+        
+        {detectedFormat && (
+          <div style={{ marginBottom: 16 }}>
+            <div className={`detection-panel ${detectedFormat !== 'CUSTOM' && detectedFormat !== 'GENERIC' ? 'detection-success' : 'detection-warning'}`}>
+              <div>🔍 Format detected: <strong>{detectedFormat === 'CUSTOM' || detectedFormat === 'GENERIC' ? 'Custom / Unknown' : `${detectedFormat} Ledger`}</strong></div>
+              <div>📊 {rawRows.length.toLocaleString('en-IN')} rows loaded from <strong>{fileName}</strong></div>
+              <div>💡 Verify the mapping below and click Confirm</div>
+            </div>
+          </div>
+        )}
+
+        <ColumnMapper
+          headers={headers}
+          rawRows={rawRows}
+          fileLabel="Quick Convert"
+          onMappingComplete={handleMappingComplete}
         />
       </div>
     )
@@ -135,22 +178,11 @@ export default function AutoRecoFlow({ onBack }: { onBack: () => void }) {
   return (
     <div className="card">
       <button className="btn btn-secondary" onClick={onBack} style={{ marginBottom: 16 }}>Back</button>
-      <h2>Auto Reconciliation</h2>
-      <p>Upload your books and the party's books. We will automatically detect the formats, map the columns, and reconcile.</p>
-      
-      {error && <div className="tool-result warn" style={{ marginBottom: 16 }}>{error}</div>}
-
-      <FileUpload onFileLoaded={handleFileLoadedWrapper} />
-      
-      <div style={{ marginTop: 20 }}>
-        <button 
-          className="btn btn-primary" 
-          onClick={runAutoRecoAttempt} 
-          disabled={!ourRaw || !partyRaw}
-        >
-          Run Auto Reco
-        </button>
-      </div>
+      <header className="app-header" style={{ marginBottom: 16 }}>
+        <h1 style={{ fontSize: '1.25rem' }}>Quick Reconciliation — File Standardization</h1>
+        <p>Upload a single file (CSV or Excel) to convert it to MicroLedger standard format. The standardized file can be used later in Guided Reconciliation.</p>
+      </header>
+      <FileUpload onFileLoaded={handleFileLoaded} singleMode title="Upload File" fileKey="quick" />
     </div>
   )
 }

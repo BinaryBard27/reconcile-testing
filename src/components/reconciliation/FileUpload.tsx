@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from 'react'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
+import { detectFormatAndSuggestMapping } from './autoDetect'
 
 type ParsedFile = {
   headers: string[]
@@ -67,6 +68,26 @@ async function parseFile(file: File, sheetName?: string, headerRow?: number): Pr
   throw new Error('Unsupported file type. Please upload CSV or Excel files.')
 }
 
+function DetectionPanel({ fileName, rowCount, detectedFormat }: { fileName: string, rowCount: number, detectedFormat: string }) {
+  const isKnown = detectedFormat !== 'CUSTOM' && detectedFormat !== 'GENERIC'
+  const formatLabel = detectedFormat === 'CUSTOM' ? 'Custom / Unknown' :
+    detectedFormat === 'GENERIC' ? 'Custom / Unknown' :
+    `${detectedFormat} Ledger`
+
+  return (
+    <div className={`detection-panel ${isKnown ? 'detection-success' : 'detection-warning'}`}>
+      <div>✅ File loaded: <strong>{fileName}</strong></div>
+      <div>📊 {rowCount.toLocaleString('en-IN')} rows detected</div>
+      <div>🔍 Format detected: <strong>{formatLabel}</strong></div>
+      {isKnown ? (
+        <div>💡 This file can be directly reconciled</div>
+      ) : (
+        <div>⚠️ Please verify column mapping on next step</div>
+      )}
+    </div>
+  )
+}
+
 function UploadCard({ title, fileKey, onFileLoaded }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [info, setInfo] = useState<{ name: string; rowCount: number; colsPreview: string[]; totalCols: number } | null>(null)
@@ -78,6 +99,7 @@ function UploadCard({ title, fileKey, onFileLoaded }) {
   const [headerRow, setHeaderRow] = useState(1)
   const [sheetNames, setSheetNames] = useState<string[]>([])
   const [isExcel, setIsExcel] = useState(false)
+  const [detectedFormat, setDetectedFormat] = useState<string | null>(null)
   
   const id = useId()
 
@@ -87,12 +109,14 @@ function UploadCard({ title, fileKey, onFileLoaded }) {
     setHeaderRow(1)
     setSheetNames([])
     setIsExcel(false)
+    setDetectedFormat(null)
     await handleParse(file, '', 1)
   }
 
   async function handleParse(file: File, sheet: string, hr: number) {
     setError('')
     setInfo(null)
+    setDetectedFormat(null)
     if (!file) return
     try {
       const parsed = await parseFile(file, sheet, hr)
@@ -110,6 +134,11 @@ function UploadCard({ title, fileKey, onFileLoaded }) {
         colsPreview: parsed.headers.slice(0, 3),
         totalCols: parsed.headers.length,
       })
+
+      // Run format detection immediately after parsing
+      const { format } = detectFormatAndSuggestMapping(parsed.headers, parsed.rows as any[])
+      setDetectedFormat(format)
+
       onFileLoaded(fileKey, parsed.rows, parsed.headers, file)
     } catch (e: any) {
       setError(e?.message ?? String(e))
@@ -197,15 +226,12 @@ function UploadCard({ title, fileKey, onFileLoaded }) {
         </div>
       )}
 
-      {info && (
-        <div style={{ marginTop: 10, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-          <div style={{ fontWeight: 700, color: 'var(--text-h)' }}>{info.name}</div>
-          <div>{info.rowCount.toLocaleString('en-IN')} rows</div>
-          <div>
-            Columns: {info.colsPreview.join(', ')}
-            {info.totalCols > 3 ? ` (+${info.totalCols - 3} more)` : ''}
-          </div>
-        </div>
+      {info && detectedFormat && (
+        <DetectionPanel
+          fileName={info.name}
+          rowCount={info.rowCount}
+          detectedFormat={detectedFormat}
+        />
       )}
     </div>
   )

@@ -3,7 +3,7 @@ import ColumnMapper from './ColumnMapper'
 import DataQualityPanel from './DataQualityPanel'
 import { exportReconciliation } from './ExportEngine'
 import FileUpload from './FileUpload'
-import { detectDuplicates, normalizeRows, normalizeRef, separateOpeningBalance } from './NormalizationEngine'
+import { detectDuplicates, normalizeRows, separateOpeningBalance } from './NormalizationEngine'
 import { buildDetailedSummary, reconcileInvoices } from './ReconciliationEngine'
 import ResultsTable from './ResultsTable'
 
@@ -99,6 +99,96 @@ function autoRemoveExportDuplicates(rows: any[], duplicatesMap: any) {
   return out
 }
 
+function EditMappingPanel({
+  isOpen, onClose,
+  ourHeaders, ourRawRows, partyHeaders, partyRawRows,
+  partyName, onRerun,
+}: any) {
+  const [ourDone, setOurDone] = useState(false)
+  const [partyDone, setPartyDone] = useState(false)
+  const [ourMapping, setOurMapping] = useState<any>(null)
+  const [ourEntryTypeMap, setOurEntryTypeMap] = useState<any>(null)
+  const [ourMappingConfig, setOurMappingConfig] = useState<any>(null)
+  const [partyMapping, setPartyMapping] = useState<any>(null)
+  const [partyEntryTypeMap, setPartyEntryTypeMap] = useState<any>(null)
+  const [partyMappingConfig, setPartyMappingConfig] = useState<any>(null)
+
+  if (!isOpen) return null
+
+  function handleOurMappingComplete(mapping: any, entryTypeMap: any, mappingConfig: any) {
+    setOurMapping(mapping)
+    setOurEntryTypeMap(entryTypeMap)
+    setOurMappingConfig(mappingConfig)
+    setOurDone(true)
+  }
+
+  function handlePartyMappingComplete(mapping: any, entryTypeMap: any, mappingConfig: any) {
+    setPartyMapping(mapping)
+    setPartyEntryTypeMap(entryTypeMap)
+    setPartyMappingConfig(mappingConfig)
+    setPartyDone(true)
+  }
+
+  function handleRerun() {
+    if (ourDone && partyDone) {
+      onRerun(ourMapping, ourEntryTypeMap, ourMappingConfig, partyMapping, partyEntryTypeMap, partyMappingConfig)
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0,
+        width: '680px', maxWidth: '100vw',
+        background: 'var(--bg)', borderLeft: '1px solid var(--border)',
+        boxShadow: '-8px 0 32px rgba(0,0,0,0.4)',
+        zIndex: 1000, overflowY: 'auto', padding: '24px',
+        animation: 'slideInRight 0.3s ease-out',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Edit Mapping</h2>
+        <button className="btn btn-secondary btn-sm" onClick={onClose}>✕ Close</button>
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <h3 style={{ fontSize: '0.95rem', marginBottom: 8 }}>Our Books Mapping</h3>
+        <ColumnMapper
+          headers={ourHeaders ?? []}
+          rawRows={ourRawRows ?? []}
+          fileLabel="Our Books"
+          onMappingComplete={handleOurMappingComplete}
+          partyName={partyName}
+        />
+        {ourDone && <div style={{ color: 'var(--green)', fontWeight: 700, fontSize: '0.85rem', marginTop: 8 }}>✓ Our Books mapping confirmed</div>}
+      </div>
+
+      <div style={{ marginBottom: 24, borderTop: '1px solid var(--border-light)', paddingTop: 20 }}>
+        <h3 style={{ fontSize: '0.95rem', marginBottom: 8 }}>Customer Books Mapping</h3>
+        <ColumnMapper
+          headers={partyHeaders ?? []}
+          rawRows={partyRawRows ?? []}
+          fileLabel="Customer Books"
+          onMappingComplete={handlePartyMappingComplete}
+          partyName={partyName}
+        />
+        {partyDone && <div style={{ color: 'var(--green)', fontWeight: 700, fontSize: '0.85rem', marginTop: 8 }}>✓ Customer Books mapping confirmed</div>}
+      </div>
+
+      <div style={{ position: 'sticky', bottom: 0, background: 'var(--bg)', padding: '16px 0', borderTop: '1px solid var(--border)' }}>
+        <button
+          className="btn btn-primary"
+          disabled={!ourDone || !partyDone}
+          onClick={handleRerun}
+          style={{ width: '100%' }}
+        >
+          Re-run Reconciliation
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
   const [stepIndex, setStepIndex] = useState(0)
 
@@ -120,6 +210,8 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
   const [partyName, setPartyName] = useState('')
   const [recoDate, setRecoDate] = useState(todayISO())
   const [currency, setCurrency] = useState('INR')
+
+  const [editMappingOpen, setEditMappingOpen] = useState(false)
 
   const qualityIssues = useMemo(() => ({ our: ourIssues, party: partyIssues }), [ourIssues, partyIssues])
 
@@ -163,6 +255,29 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
     setResults(res)
     setSummary(sum)
     setStepIndex(5)
+  }
+
+  function handleRerunWithNewMapping(
+    ourMapping: any, ourEntryTypeMap: any, ourMappingConfig: any,
+    partyMapping: any, partyEntryTypeMap: any, partyMappingConfig: any
+  ) {
+    const ourNorm = normalizeRows(ourRawRows, ourMapping, ourEntryTypeMap, ourMappingConfig)
+    const { openingBalanceRows: ourOB, transactionRows: ourTrans } = separateOpeningBalance(ourNorm)
+    setOurNormalized(ourTrans)
+    setOurOpeningBalance(ourOB)
+
+    const partyNorm = normalizeRows(partyRawRows, partyMapping, partyEntryTypeMap, partyMappingConfig)
+    const { openingBalanceRows: partyOB, transactionRows: partyTrans } = separateOpeningBalance(partyNorm)
+    setPartyNormalized(partyTrans)
+    setPartyOpeningBalance(partyOB)
+
+    const cleanOur = autoRemoveExportDuplicates(ourTrans, detectDuplicates(ourTrans))
+    const cleanParty = autoRemoveExportDuplicates(partyTrans, detectDuplicates(partyTrans))
+    const res = reconcileInvoices(cleanOur, cleanParty)
+    const sum = buildDetailedSummary(res, cleanOur, cleanParty, ourOB, partyOB)
+    setResults(res)
+    setSummary(sum)
+    setEditMappingOpen(false)
   }
 
   function handleExport(viewRows: any, remarksByRef: any, actionStatuses: any) {
@@ -222,7 +337,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
           rawRows={partyRawRows ?? []}
           fileLabel="Customer Books"
           onMappingComplete={onPartyMappingComplete}
-          partyName={partyName} // Pass party name so cache works
+          partyName={partyName}
         />
       )}
 
@@ -236,13 +351,34 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
       )}
 
       {stepIndex === 5 && results && summary && (
-        <ResultsTable
-          results={results}
-          summary={summary}
-          partyName={partyName}
-          recoDate={recoDate}
-          onExport={handleExport}
-        />
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => setEditMappingOpen(true)}
+              style={{ gap: 6 }}
+            >
+              ✏️ Edit Mapping
+            </button>
+          </div>
+          <ResultsTable
+            results={results}
+            summary={summary}
+            partyName={partyName}
+            recoDate={recoDate}
+            onExport={handleExport}
+          />
+          <EditMappingPanel
+            isOpen={editMappingOpen}
+            onClose={() => setEditMappingOpen(false)}
+            ourHeaders={ourHeaders}
+            ourRawRows={ourRawRows}
+            partyHeaders={partyHeaders}
+            partyRawRows={partyRawRows}
+            partyName={partyName}
+            onRerun={handleRerunWithNewMapping}
+          />
+        </div>
       )}
     </div>
   )
