@@ -253,8 +253,8 @@ export default function ColumnMapper({
               <input type="date" value={recoDate} onChange={(e) => setRecoDate?.(e.target.value)} />
             </label>
             <label className="mapper-field">
-              <span>Party Name</span>
-              <input type="text" value={partyName} onChange={(e) => setPartyName?.(e.target.value)} placeholder="Customer / Party" />
+              <span>Enter party / company name for this reconciliation</span>
+              <input type="text" value={partyName} onChange={(e) => setPartyName?.(e.target.value)} placeholder="" />
             </label>
           </div>
         </div>

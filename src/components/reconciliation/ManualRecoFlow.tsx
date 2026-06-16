@@ -285,7 +285,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
       results,
       summary,
       qualityIssues,
-      partyName || 'Party',
+      partyName || 'Unknown Party',
       recoDate || todayISO(),
       remarksByRef,
       actionStatuses,

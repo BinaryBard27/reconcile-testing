@@ -61,7 +61,7 @@ function SummaryStatement({ summary, recoDate, partyName, sym }: any) {
         <h3 style={{ marginTop: 0, marginBottom: 4 }}>RECONCILIATION SUMMARY</h3>
         <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: 16 }}>
           As on: <span style={{ fontWeight: 600, color: 'var(--text-h)' }}>{recoDate}</span> | 
-          Party: <span style={{ fontWeight: 600, color: 'var(--text-h)' }}>{partyName || 'Party'}</span>
+          Party: <span style={{ fontWeight: 600, color: 'var(--text-h)' }}>{partyName || 'Unknown Party'}</span>
         </div>
         
         <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
@@ -211,7 +211,7 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
       <header className="app-header">
         <h1>Results</h1>
         <p>
-          Ledger reconciliation for <span style={{ fontWeight: 700 }}>{partyName || 'Party'}</span> as on{' '}
+          Ledger reconciliation for <span style={{ fontWeight: 700 }}>{partyName || 'Unknown Party'}</span> as on{' '}
           <span style={{ fontWeight: 700 }}>{recoDate}</span>.
         </p>
       </header>

@@ -8,17 +8,49 @@ type ParsedFile = {
   rows: Record<string, unknown>[]
   sheetNames?: string[]
   isExcel?: boolean
+  detectedRow: number
+  actualHeaderRow: number
 }
 
-function parseCsv(file: File): Promise<ParsedFile> {
+function detectHeaderRow(allRows: any[][]): number {
+  for (let i = 0; i <= Math.min(2, allRows.length - 1); i++) {
+    const row = allRows[i]
+    const nonEmpty = row.filter(v => v !== null && v !== undefined && v !== '')
+    if (nonEmpty.length === 0) continue
+    
+    const stringCount = nonEmpty.filter(v => {
+      const n = parseFloat(String(v))
+      return isNaN(n) || String(v).trim().length > 8
+    }).length
+    
+    const stringRatio = stringCount / nonEmpty.length
+    if (stringRatio >= 0.6) return i
+  }
+  return 0
+}
+
+function parseCsv(file: File, headerRow = 1): Promise<ParsedFile> {
   return new Promise((resolve, reject) => {
     Papa.parse(file, {
-      header: true,
+      header: false,
       skipEmptyLines: true,
       complete: (results) => {
-        const headers = results.meta?.fields ?? []
-        const rows = (results.data ?? []) as Record<string, unknown>[]
-        resolve({ headers, rows })
+        const aoa = (results.data ?? []) as any[][]
+        const detectedRow = detectHeaderRow(aoa)
+        const hrIdx = headerRow > 0 ? headerRow - 1 : detectedRow
+        const headers = (aoa?.[hrIdx] ?? []).map((h) => String(h ?? '').trim()).filter(Boolean)
+        const dataRows = (aoa ?? []).slice(hrIdx + 1)
+        
+        const rows = dataRows
+          .filter((r) => Array.isArray(r) && r.some((cell) => String(cell ?? '').trim() !== ''))
+          .map((r) => {
+            const obj: Record<string, unknown> = {}
+            headers.forEach((h, idx) => {
+              obj[h] = r?.[idx] ?? ''
+            })
+            return obj
+          })
+        resolve({ headers, rows, isExcel: false, detectedRow, actualHeaderRow: hrIdx + 1 })
       },
       error: reject,
     })
@@ -37,7 +69,8 @@ function parseExcel(file: File, sheetName?: string, headerRow = 1): Promise<Pars
 
         // header:1 gives AoA
         const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' })
-        const hrIdx = Math.max(0, headerRow - 1)
+        const detectedRow = detectHeaderRow(aoa)
+        const hrIdx = headerRow > 0 ? headerRow - 1 : detectedRow
         const headers = (aoa?.[hrIdx] ?? []).map((h) => String(h ?? '').trim()).filter(Boolean)
         const dataRows = (aoa ?? []).slice(hrIdx + 1)
 
@@ -51,7 +84,7 @@ function parseExcel(file: File, sheetName?: string, headerRow = 1): Promise<Pars
             return obj
           })
 
-        resolve({ headers, rows, sheetNames: wb.SheetNames, isExcel: true })
+        resolve({ headers, rows, sheetNames: wb.SheetNames, isExcel: true, detectedRow, actualHeaderRow: hrIdx + 1 })
       } catch (e) {
         reject(e)
       }
@@ -61,9 +94,9 @@ function parseExcel(file: File, sheetName?: string, headerRow = 1): Promise<Pars
   })
 }
 
-async function parseFile(file: File, sheetName?: string, headerRow?: number): Promise<ParsedFile> {
+async function parseFile(file: File, sheetName?: string, headerRow = 1): Promise<ParsedFile> {
   const name = String(file?.name ?? '').toLowerCase()
-  if (name.endsWith('.csv')) return parseCsv(file)
+  if (name.endsWith('.csv')) return parseCsv(file, headerRow)
   if (name.endsWith('.xlsx') || name.endsWith('.xls')) return parseExcel(file, sheetName, headerRow)
   throw new Error('Unsupported file type. Please upload CSV or Excel files.')
 }
@@ -100,17 +133,19 @@ function UploadCard({ title, fileKey, onFileLoaded }) {
   const [sheetNames, setSheetNames] = useState<string[]>([])
   const [isExcel, setIsExcel] = useState(false)
   const [detectedFormat, setDetectedFormat] = useState<string | null>(null)
+  const [detectedHeaderRow, setDetectedHeaderRow] = useState<number | null>(null)
   
   const id = useId()
 
   async function handleFileDrop(file: File) {
     setCurrentFile(file)
     setSelectedSheet('')
-    setHeaderRow(1)
+    setHeaderRow(0)
     setSheetNames([])
     setIsExcel(false)
     setDetectedFormat(null)
-    await handleParse(file, '', 1)
+    setDetectedHeaderRow(null)
+    await handleParse(file, '', 0)
   }
 
   async function handleParse(file: File, sheet: string, hr: number) {
@@ -120,6 +155,9 @@ function UploadCard({ title, fileKey, onFileLoaded }) {
     if (!file) return
     try {
       const parsed = await parseFile(file, sheet, hr)
+      setHeaderRow(parsed.actualHeaderRow)
+      setDetectedHeaderRow(parsed.detectedRow)
+      
       if (parsed.isExcel) {
          setIsExcel(true)
          setSheetNames(parsed.sheetNames || [])
@@ -192,9 +230,15 @@ function UploadCard({ title, fileKey, onFileLoaded }) {
         </div>
       )}
 
-      {isExcel && info && (
+      {detectedHeaderRow !== null && detectedHeaderRow > 0 && (
+        <div className="tool-result warn" style={{ marginTop: 12, backgroundColor: 'rgba(234, 179, 8, 0.15)', color: 'var(--yellow)', borderColor: 'rgba(234, 179, 8, 0.3)' }}>
+          ⚠️ Headers detected at Row {detectedHeaderRow + 1} — first {detectedHeaderRow} row(s) appear to be summary/data. Header row set to {detectedHeaderRow + 1} automatically.
+        </div>
+      )}
+
+      {info && (
         <div style={{ marginTop: 12, padding: 12, background: 'var(--bg-elevated)', borderRadius: 6, border: '1px solid var(--border-light)' }}>
-          {sheetNames.length > 1 && (
+          {isExcel && sheetNames.length > 1 && (
             <label className="mapper-field" style={{ marginBottom: 8 }}>
               <span>Sheet</span>
               <select 

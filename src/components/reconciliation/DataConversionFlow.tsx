@@ -180,7 +180,7 @@ export default function DataConversionFlow({ onBack }: { onBack: () => void }) {
       <button className="btn btn-secondary" onClick={onBack} style={{ marginBottom: 16 }}>Back</button>
       <header className="app-header" style={{ marginBottom: 16 }}>
         <h1 style={{ fontSize: '1.25rem' }}>Upload Ledger File</h1>
-        <p>Upload any SAP, Tally, Zoho or custom ledger file.</p>
+        <p>Upload any SAP, Tally, Zoho or custom ledger export (CSV, XLS, XLSX)</p>
       </header>
       <FileUpload onFileLoaded={handleFileLoaded} singleMode title="Upload Ledger File" fileKey="quick" />
     </div>
