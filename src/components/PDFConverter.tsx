@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import React, { useState, useRef } from 'react'
 
 const DUMMY_DATA = [
   { date: '2023-10-01', description: 'OPENING BALANCE', amount: 5000.00, type: 'Credit' },
