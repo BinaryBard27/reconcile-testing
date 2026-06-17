@@ -19,17 +19,28 @@ const ENTRY_TYPE_LABELS = [
   { value: ENTRY_TYPES.PAYMENT, label: 'Payment (Credit)' },
   { value: ENTRY_TYPES.CREDIT_NOTE, label: 'Credit Note (Credit)' },
   { value: ENTRY_TYPES.ADJUSTMENT, label: 'Adjustment' },
+  { value: ENTRY_TYPES.TDS, label: 'TDS (Tax Deducted)' },
   { value: ENTRY_TYPES.IGNORE, label: 'Ignore' },
 ]
 
-function smartDefaultForValue(v: string) {
+function smartDefaultForValue(v: string, sampleNarrations: string[] = []) {
   const s = String(v ?? '').trim().toLowerCase()
   if (!s) return ENTRY_TYPES.IGNORE
 
   if (['dr', 'rv', 'sales', 'invoice', 'inv'].some(x => s.includes(x))) return ENTRY_TYPES.INVOICE
   if (['dz', 'cr', 'kz', 'payment', 'receipt', 'pay'].some(x => s.includes(x))) return ENTRY_TYPES.PAYMENT
   if (['dg', 'credit note', 'cn'].some(x => s.includes(x))) return ENTRY_TYPES.CREDIT_NOTE
-  if (['da', 'xc', 'dy', 'sa', 'journal', 'adj'].some(x => s.includes(x))) return ENTRY_TYPES.ADJUSTMENT
+  
+  if (['da', 'xc', 'dy', 'sa', 'journal', 'adj'].some(x => s.includes(x))) {
+    const tdsKeywords = ['tds', '194c', '194j', '194h', '194q', 'tax deducted']
+    for (const narr of sampleNarrations) {
+      const n = String(narr ?? '').toLowerCase()
+      if (tdsKeywords.some(kw => n.includes(kw))) {
+        return ENTRY_TYPES.TDS
+      }
+    }
+    return ENTRY_TYPES.ADJUSTMENT
+  }
 
   return ENTRY_TYPES.IGNORE
 }
@@ -118,11 +129,18 @@ export default function ColumnMapper({
       const next = { ...prev }
       for (const v of uniqueEntryTypeValues) {
         if (next[v] !== undefined) continue
-        next[v] = smartDefaultForValue(v)
+        
+        let sampleNarrations: string[] = []
+        if (mapping.narration) {
+          const rowsWithValue = (rawRows ?? []).filter((r: any) => r?.[mapping.entryType] === v)
+          sampleNarrations = rowsWithValue.slice(0, 5).map((r: any) => r?.[mapping.narration]).filter(Boolean) as string[]
+        }
+        
+        next[v] = smartDefaultForValue(v, sampleNarrations)
       }
       return next
     })
-  }, [mapping.entryType, uniqueEntryTypeValues, loadedFromCache])
+  }, [mapping.entryType, mapping.narration, uniqueEntryTypeValues, loadedFromCache, rawRows])
 
   function validate() {
     if (!mapping.refNo || !mapping.date) return 'Missing required fields: Reference Number and Date.'

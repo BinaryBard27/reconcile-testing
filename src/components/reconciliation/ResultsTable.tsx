@@ -52,7 +52,7 @@ function statusBadge(status) {
   )
 }
 
-function SummaryStatement({ summary, recoDate, partyName, sym }: any) {
+function SummaryStatement({ summary, recoDate, partyName, sym, isMixed }: any) {
   if (!summary) return null
 
   return (
@@ -63,6 +63,11 @@ function SummaryStatement({ summary, recoDate, partyName, sym }: any) {
           As on: <span style={{ fontWeight: 600, color: 'var(--text-h)' }}>{recoDate}</span> | 
           Party: <span style={{ fontWeight: 600, color: 'var(--text-h)' }}>{partyName || 'Unknown Party'}</span>
         </div>
+        {isMixed && (
+          <div style={{ fontSize: '0.8rem', color: '#f59e0b', marginBottom: 12 }}>
+            Mixed currencies detected — INR used for matching
+          </div>
+        )}
         
         <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
           <tbody>
@@ -203,8 +208,24 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
     setSortDir('asc')
   }
 
-  const primaryCurrency = (results && results.length > 0) ? results[0].ourCurrency || 'INR' : 'INR'
-  const sym = currencySymbol(primaryCurrency)
+  const { isMixed, primaryCurrency } = useMemo(() => {
+    if (!results || results.length === 0) return { isMixed: false, primaryCurrency: 'INR' };
+    let usdCount = 0;
+    let inrCount = 0;
+    results.forEach((r: any) => {
+      const o = r.ourCurrency;
+      const p = r.partyCurrency;
+      if (o === 'USD') usdCount++; else if (o === 'INR') inrCount++;
+      if (p === 'USD') usdCount++; else if (p === 'INR') inrCount++;
+    });
+    
+    const isMixed = usdCount > 0 && inrCount > 0;
+    const primaryCurrency = usdCount > inrCount ? 'USD' : 'INR';
+    
+    return { isMixed, primaryCurrency };
+  }, [results]);
+
+  const sym = isMixed ? '₹' : currencySymbol(primaryCurrency);
 
   return (
     <div>
@@ -216,7 +237,7 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
         </p>
       </header>
 
-      <SummaryStatement summary={summary} recoDate={recoDate} partyName={partyName} sym={sym} />
+      <SummaryStatement summary={summary} recoDate={recoDate} partyName={partyName} sym={sym} isMixed={isMixed} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16, marginBottom: 12 }}>
         {TABS.map((t) => (

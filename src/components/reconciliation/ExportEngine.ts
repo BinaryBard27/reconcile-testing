@@ -141,6 +141,19 @@ export function exportReconciliation(
     'TOTAL', '', '', '', '', totalExpTDS, totalActTDS, totalExpTDS - totalActTDS, ''
   ])
 
+  // Explicit TDS Entries Booked
+  tdsRows.push([])
+  tdsRows.push(['EXPLICIT TDS ENTRIES BOOKED'])
+  tdsRows.push(['Source (Our/Party)', 'Date', 'Reference', 'Amount', 'Narration'])
+  
+  ;(ourRows || []).filter((r: any) => r.entryType === 'tds').forEach((r: any) => {
+    tdsRows.push(['Our Books', fmtDate(r.date), r.refNo || '', Math.abs(r.amount), r.narration || ''])
+  })
+  
+  ;(partyRows || []).filter((r: any) => r.entryType === 'tds').forEach((r: any) => {
+    tdsRows.push(['Party Books', fmtDate(r.date), r.refNo || '', Math.abs(r.amount), r.narration || ''])
+  })
+
   const ws3 = XLSX.utils.aoa_to_sheet([tdsHeaders, ...tdsRows])
   XLSX.utils.book_append_sheet(wb, ws3, 'TDS Register')
 
