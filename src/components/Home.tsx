@@ -14,7 +14,7 @@ const Home: React.FC<HomeProps> = ({ onNavigate }) => {
       </div>
 
       <div className="home-action-cards">
-        <div className="home-action-card" onClick={() => onNavigate('pdfconverter')}>
+        <div className="home-action-card" onClick={() => onNavigate('convert')}>
           <div className="action-card-left">
             <div className="home-card-icon-large blue-icon-bg">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
