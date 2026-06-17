@@ -125,6 +125,9 @@ function App() {
                   <button className="dropdown-item" onClick={() => handleToolSelect('num2words')}>
                     <span className="nav-icon">📝</span> Number to Words
                   </button>
+                  <button className="dropdown-item" onClick={() => handleToolSelect('pdfconverter')}>
+                    <span className="nav-icon">📄</span> Bank Statement PDF to CSV
+                  </button>
                 </div>
               )}
             </div>
