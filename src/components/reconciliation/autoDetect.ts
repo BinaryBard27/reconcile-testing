@@ -1,6 +1,6 @@
 import { headerKey } from './utils'
 
-export type DetectedFormat = 'TALLY' | 'SAP' | 'ZOHO' | 'CUSTOM' | 'GENERIC'
+export type DetectedFormat = 'TALLY' | 'SAP' | 'ZOHO' | 'CUSTOM' | 'GENERIC' | (string & {})
 
 interface MappingSuggestion {
   refNo: string
@@ -285,5 +285,44 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
       suggestion.utr
   }
 
-  return { format, suggestion }
+  // Validation step for header-based matches
+  let finalFormat = format as string;
+  if (format === 'TALLY' || format === 'SAP' || format === 'ZOHO') {
+    const sampleSize = Math.min(rows.length, 20);
+    const sample = rows.slice(0, sampleSize);
+    let fallbackNeeded = false;
+    let contentSuggestion: MappingSuggestion | null = null;
+    
+    const fieldsToCheck: (keyof MappingSuggestion)[] = [
+      'refNo', 'entryType', 'date', 'amountINR', 'debitAmount', 'creditAmount'
+    ];
+
+    for (const colName of fieldsToCheck) {
+      const field = suggestion[colName] as string;
+      if (!field) continue;
+      
+      let emptyCount = 0;
+      for (const row of sample) {
+        const val = row[field];
+        if (val === null || val === undefined || String(val).trim() === '') {
+          emptyCount++;
+        }
+      }
+      
+      if (sampleSize > 0 && emptyCount / sampleSize > 0.7) {
+        fallbackNeeded = true;
+        if (!contentSuggestion) {
+          contentSuggestion = contentBasedDetection(headers, rows);
+        }
+        (suggestion as any)[colName] = contentSuggestion[colName];
+      }
+    }
+
+    if (fallbackNeeded) {
+      const formatName = format === 'SAP' ? 'SAP' : format === 'TALLY' ? 'Tally' : 'Zoho';
+      finalFormat = `Detected: ${formatName} Format — some columns appear empty, please verify`;
+    }
+  }
+
+  return { format: finalFormat as DetectedFormat, suggestion }
 }
