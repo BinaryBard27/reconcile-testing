@@ -80,8 +80,12 @@ function SummaryStatement({ summary, recoDate, partyName, sym, isMixed }: any) {
               <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{sym} {fmtMoney(summary.invoicesNotInParty)}</td>
             </tr>
             <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
-              <td style={{ padding: '8px 0' }}>Add: TDS to be booked</td>
-              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{sym} {fmtMoney(summary.tdsToBeBooked)}</td>
+              <td style={{ padding: '8px 0' }}>Add: TDS booked by Party (pending in our books)</td>
+              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{sym} {fmtMoney(summary.tdsExplicitGap)}</td>
+            </tr>
+            <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+              <td style={{ padding: '8px 0' }}>Add: TDS detected via amount mismatch</td>
+              <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{sym} {fmtMoney(summary.tdsFromMismatch)}</td>
             </tr>
             <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
               <td style={{ padding: '8px 0' }}>Less: Invoices not in Our Books</td>

@@ -304,9 +304,18 @@ export function buildDetailedSummary(
     .filter(r => r.status === MATCH_STATUS.MISSING_IN_OURS)
     .reduce((s, r) => s + r.partyAmount, 0)
 
-  const tdsToBeBooked = results
+  const ourTDSTotal = ourRows
+    .filter(r => r.entryType === 'tds')
+    .reduce((s, r) => s + Math.abs(r.amount), 0)
+
+
+  const tdsExplicitGap = Math.max(0, partyTDSTotal - ourTDSTotal)
+
+  const tdsFromMismatch = results
     .filter(r => String(r.status).startsWith('TDS Deduction'))
     .reduce((s, r) => s + (r.actualDeduction || 0), 0)
+
+  const tdsToBeBooked = tdsFromMismatch + tdsExplicitGap
 
   const amountDifferences = results
     .filter(r => String(r.status).includes('Mismatch') && !String(r.status).startsWith('TDS'))
@@ -333,7 +342,7 @@ export function buildDetailedSummary(
     ourOB, partyOB,
     ourInvoiceTotal, partyInvoiceTotal,
     ourPaymentTotal, partyPaymentTotal,
-    partyTDSTotal, tdsToBeBooked,
+    partyTDSTotal, tdsToBeBooked, tdsExplicitGap, tdsFromMismatch,
     ourNetBalance, partyNetBalance,
     invoicesNotInParty, invoicesNotInOurs,
     amountDifferences, derivedBalance,

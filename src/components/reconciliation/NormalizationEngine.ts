@@ -41,11 +41,13 @@ export function parseDate(val) {
 
 export function detectDuplicates(rows) {
   // rows: array of { refNo, amount, date, ... }
+  const invoiceRows = rows.filter((r: any) => r.entryType === 'invoice' || r.entryType === 'credit_note')
+
   const groups: Record<string, any[]> = {}
-  rows.forEach((row, idx) => {
+  invoiceRows.forEach((row: any, idx: number) => {
     if (!row.refNo) return
     if (!groups[row.refNo]) groups[row.refNo] = []
-    groups[row.refNo].push({ ...row, originalIndex: idx })
+    groups[row.refNo].push({ ...row, originalIndex: row.originalIndex ?? idx })
   })
 
   const duplicates = {}
