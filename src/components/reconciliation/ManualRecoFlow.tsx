@@ -203,6 +203,8 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
   const [partyOpeningBalance, setPartyOpeningBalance] = useState<any[]>([])
   const [ourIssues, setOurIssues] = useState<any>(null)
   const [partyIssues, setPartyIssues] = useState<any>(null)
+  const [ourInvoiceCount, setOurInvoiceCount] = useState(0)
+  const [partyInvoiceCount, setPartyInvoiceCount] = useState(0)
 
   const [results, setResults] = useState<any>(null)
   const [summary, setSummary] = useState<any>(null)
@@ -232,6 +234,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
     const { openingBalanceRows, transactionRows } = separateOpeningBalance(norm)
     setOurNormalized(transactionRows)
     setOurOpeningBalance(openingBalanceRows)
+    setOurInvoiceCount(transactionRows.filter((r: any) => r.entryType === 'invoice').length)
     setOurIssues(buildIssues({ rawRows: ourRawRows, mapping, entryTypeMap, normalizedRows: transactionRows }))
     setStepIndex(2)
   }
@@ -241,6 +244,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
     const { openingBalanceRows, transactionRows } = separateOpeningBalance(norm)
     setPartyNormalized(transactionRows)
     setPartyOpeningBalance(openingBalanceRows)
+    setPartyInvoiceCount(transactionRows.filter((r: any) => r.entryType === 'invoice').length)
     setPartyIssues(buildIssues({ rawRows: partyRawRows, mapping, entryTypeMap, normalizedRows: transactionRows }))
     setStepIndex(4)
   }
@@ -350,6 +354,8 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
         <DataQualityPanel
           ourIssues={ourIssues ?? { noReference: 0, duplicates: {}, unclassified: 0 }}
           partyIssues={partyIssues ?? { noReference: 0, duplicates: {}, unclassified: 0 }}
+          ourInvoiceCount={ourInvoiceCount}
+          partyInvoiceCount={partyInvoiceCount}
           onFix={() => setStepIndex(3)}
           onProceed={proceedToReconciliation}
         />

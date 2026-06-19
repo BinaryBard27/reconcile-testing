@@ -71,7 +71,9 @@ function renderIssues(label, issues) {
   return lines
 }
 
-export default function DataQualityPanel({ ourIssues, partyIssues, onProceed, onFix }) {
+export default function DataQualityPanel({ ourIssues, partyIssues, ourInvoiceCount, partyInvoiceCount, onProceed, onFix }) {
+  const blockProceed = partyInvoiceCount === 0
+
   return (
     <div>
       <header className="app-header">
@@ -79,19 +81,37 @@ export default function DataQualityPanel({ ourIssues, partyIssues, onProceed, on
         <p>We found a few issues that can affect matching. Export duplicates will be auto-removed before reconciliation.</p>
       </header>
 
+      {blockProceed && (
+        <div className="card" style={{ marginBottom: 20, borderColor: 'var(--red)' }}>
+          <Line tone="red">
+            <div>
+              <strong>⚠️ No invoice rows found in Customer Books.</strong>
+              <div style={{ marginTop: 8, fontSize: '0.9rem' }}>
+                All rows are classified as Ignore or no entry type was mapped.
+                Go back to Map Customer and check:
+                <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
+                  <li>Entry Type column is mapped and classified correctly</li>
+                  <li>OR Entry Type is left unmapped and Debit/Credit columns have values</li>
+                </ul>
+              </div>
+            </div>
+          </Line>
+        </div>
+      )}
+
       <div className="card" style={{ marginBottom: 20 }}>
         <h3 style={{ marginBottom: 12 }}>⚠️ Data Quality Issues Found</h3>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
           <div>
-            <div style={{ fontWeight: 700, marginBottom: 10 }}>Our Books</div>
+            <div style={{ fontWeight: 700, marginBottom: 10 }}>Our Books ({ourInvoiceCount ?? 0} invoices)</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {renderIssues('our', ourIssues)}
             </div>
           </div>
 
           <div>
-            <div style={{ fontWeight: 700, marginBottom: 10 }}>Customer Books</div>
+            <div style={{ fontWeight: 700, marginBottom: 10 }}>Customer Books ({partyInvoiceCount ?? 0} invoices)</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {renderIssues('party', partyIssues)}
             </div>
@@ -103,11 +123,12 @@ export default function DataQualityPanel({ ourIssues, partyIssues, onProceed, on
         <button type="button" className="btn btn-secondary" onClick={onFix}>
           Fix Issues First
         </button>
-        <button type="button" className="btn btn-primary" onClick={onProceed}>
-          Proceed to Reconciliation
-        </button>
+        {!blockProceed && (
+          <button type="button" className="btn btn-primary" onClick={onProceed}>
+            Proceed to Reconciliation
+          </button>
+        )}
       </div>
     </div>
   )
 }
-

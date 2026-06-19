@@ -163,11 +163,26 @@ export function exportReconciliation(
   // -----------------------------------------------------
   const payHeaders = ['Date', 'Amount', 'Narration/UTR', 'Source (Our/Party)', 'Notes']
   const payRows = []
-  
-  ;(ourRows || []).filter(r => r.entryType === 'payment').forEach(r => {
-    payRows.push([fmtDate(r.date), Math.abs(r.amount), r.utr || r.narration || '', 'Our Books', 'Payment Received'])
+
+  const ourPayments = (ourRows || []).filter(r => r.entryType === 'payment')
+  const utrGroups: Record<string, any[]> = {}
+  ourPayments.forEach(r => {
+    const key = r.utr && r.utr.trim() ? r.utr.trim() : `no-utr-${r.date}-${r.amount}`
+    if (!utrGroups[key]) utrGroups[key] = []
+    utrGroups[key].push(r)
   })
-  
+  Object.entries(utrGroups).forEach(([, rows]) => {
+    const totalAmt = rows.reduce((s, r) => s + Math.abs(r.amount), 0)
+    const note = rows.length > 1 ? `Cleared ${rows.length} invoices` : 'Payment Received'
+    payRows.push([
+      fmtDate(rows[0].date),
+      totalAmt,
+      rows[0].utr || rows[0].narration || '',
+      'Our Books',
+      note,
+    ])
+  })
+
   ;(partyRows || []).filter(r => r.entryType === 'payment').forEach(r => {
     payRows.push([fmtDate(r.date), Math.abs(r.amount), r.utr || r.narration || '', 'Party Books', 'Payment Made'])
   })

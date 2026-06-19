@@ -155,6 +155,34 @@ function contentBasedDetection(headers: string[], rows: any[]): MappingSuggestio
   return suggestion
 }
 
+function findCrossReferenceColumn(
+  headers: string[],
+  rows: any[],
+  currentRefNo: string
+): string | null {
+  const crossRefKeywords = [
+    'ref no', 'reference no', 'supplier invoice', 'vendor invoice',
+    'party invoice', 'invoice no', 'our ref', 'cross ref', 'invoice',
+  ]
+
+  const candidates = headers.filter(h => {
+    const hk = h.toLowerCase().replace(/\s+/g, ' ').trim()
+    return crossRefKeywords.some(k => hk.includes(k)) && h !== currentRefNo
+  })
+
+  for (const col of candidates) {
+    const sampleVals = rows.slice(0, 20)
+      .map(r => String(r?.[col] ?? '').trim())
+      .filter(Boolean)
+    const hasLongNumericRefs = sampleVals
+      .filter(v => /^\d{9,}$/.test(v.replace(/\.0+$/, ''))).length
+    if (hasLongNumericRefs > sampleVals.length * 0.3) {
+      return col
+    }
+  }
+  return null
+}
+
 export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): { format: DetectedFormat, suggestion: MappingSuggestion } {
   const normHeaders = headers.map(h => headerKey(h))
   const headerString = normHeaders.join(' ')
@@ -193,21 +221,30 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
     const narration = findHeader(['narration', 'particulars', 'text', 'description', 'memo', 'notes'])
     const utr = findHeader(['utr', 'cheque', 'payment ref', 'reference'])
 
+    const customSuggestion: MappingSuggestion = {
+      refNo: refNo || contentSuggestion.refNo,
+      entryType: entryType || contentSuggestion.entryType,
+      date: date || contentSuggestion.date,
+      amountINR: contentSuggestion.amountINR,
+      debitAmount: contentSuggestion.debitAmount,
+      creditAmount: contentSuggestion.creditAmount,
+      amountUSD: contentSuggestion.amountUSD,
+      narration: narration || contentSuggestion.narration,
+      utr: utr || contentSuggestion.utr,
+      clearedStatus: contentSuggestion.clearedStatus,
+      amountLogic: contentSuggestion.amountLogic,
+    }
+
+    let customLabel: DetectedFormat = 'CUSTOM'
+    const betterRef = findCrossReferenceColumn(headers, rows, customSuggestion.refNo)
+    if (betterRef) {
+      customSuggestion.refNo = betterRef
+      customLabel = `Auto-detected: CUSTOM Format — using "${betterRef}" as reference key` as DetectedFormat
+    }
+
     return {
-      format,
-      suggestion: {
-        refNo: refNo || contentSuggestion.refNo,
-        entryType: entryType || contentSuggestion.entryType,
-        date: date || contentSuggestion.date,
-        amountINR: contentSuggestion.amountINR,
-        debitAmount: contentSuggestion.debitAmount,
-        creditAmount: contentSuggestion.creditAmount,
-        amountUSD: contentSuggestion.amountUSD,
-        narration: narration || contentSuggestion.narration,
-        utr: utr || contentSuggestion.utr,
-        clearedStatus: contentSuggestion.clearedStatus,
-        amountLogic: contentSuggestion.amountLogic,
-      }
+      format: customLabel,
+      suggestion: customSuggestion,
     }
   }
 
@@ -325,22 +362,14 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
   }
 
   if (format === 'TALLY' || format === 'ZOHO') {
-    const refLower = String(suggestion.refNo).toLowerCase().trim()
-    const isTallyDefault = refLower === 'vch no.' || refLower === 'vch no'
-    const isZohoDefault = refLower.includes('internal id') || refLower.includes('transaction id') || refLower === 'invoice id'
-    
-    if ((format === 'TALLY' && isTallyDefault) || (format === 'ZOHO' && isZohoDefault)) {
-      const crossRefKeywords = ['ref no', 'reference no', 'supplier invoice', 'vendor invoice', 'party invoice', 'invoice no', 'our ref', 'cross ref']
-      const crossRefHeader = headers.find(h => crossRefKeywords.some(kw => String(h).toLowerCase().includes(kw)))
-      
-      if (crossRefHeader && crossRefHeader !== suggestion.refNo) {
-        suggestion.refNo = crossRefHeader
-        const formatName = format === 'TALLY' ? 'TALLY' : 'ZOHO'
-        if (finalFormat.includes('some columns appear empty')) {
-          finalFormat = `Auto-detected: ${formatName} Format — using [${crossRefHeader}] as reference key — some columns appear empty, please verify`
-        } else {
-          finalFormat = `Auto-detected: ${formatName} Format — using [${crossRefHeader}] as reference key`
-        }
+    const betterRef = findCrossReferenceColumn(headers, rows, suggestion.refNo)
+    if (betterRef) {
+      suggestion.refNo = betterRef
+      const formatName = format === 'TALLY' ? 'TALLY' : 'ZOHO'
+      if (finalFormat.includes('some columns appear empty')) {
+        finalFormat = `Auto-detected: ${formatName} Format — using "${betterRef}" as reference key — some columns appear empty, please verify`
+      } else {
+        finalFormat = `Auto-detected: ${formatName} Format — using "${betterRef}" as reference key`
       }
     }
   }

@@ -2,11 +2,31 @@ import Fuse from 'fuse.js'
 import { MATCH_STATUS } from './constants'
 
 const TDS_SECTIONS = [
-  { section: '194C', rate: 0.02, keywords: ['contract', 'transport', 'freight', 'handling', 'scanning', 'logistics', 'lashing', 'stuffing', 'outbound', 'inbound', 'cartage', 'delivery charges'] },
+  {
+    section: '194C',
+    rate: 0.02,
+    keywords: ['contract', 'transport', 'freight', 'handling', 'scanning',
+               'logistics', 'lashing', 'stuffing', 'outbound', 'inbound',
+               'cartage', 'delivery charges', 'lcl', 'port ssr',
+               'transportation', 'ground rent'],
+  },
   { section: '194C (Individual)', rate: 0.01, keywords: [] },
-  { section: '194I', rate: 0.10, keywords: ['rent', 'storage', 'warehouse', 'godown', 'space charges', 'facility charges', 'cold storage', 'yard charges'] },
-  { section: '194J', rate: 0.10, keywords: ['professional','technical','consultancy','management fee','advisory','software'] },
-  { section: '194H', rate: 0.05, keywords: ['commission','brokerage','agency'] },
+  {
+    section: '194I',
+    rate: 0.10,
+    keywords: ['storage', 'warehouse', 'godown', 'space charges',
+               'facility charges', 'cold storage', 'yard charges',
+               'rental charges', 'fixed rental', 'unit storage',
+               'fixed storage'],
+  },
+  {
+    section: '194J',
+    rate: 0.10,
+    keywords: ['professional', 'technical', 'consultancy',
+               'management fee', 'advisory', 'software', 'vas',
+               'value added'],
+  },
+  { section: '194H', rate: 0.05, keywords: ['commission', 'brokerage', 'agency'] },
   { section: '194Q', rate: 0.001, keywords: ['purchase of goods'] },
 ]
 

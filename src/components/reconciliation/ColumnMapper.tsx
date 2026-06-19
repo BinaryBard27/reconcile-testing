@@ -93,6 +93,7 @@ export default function ColumnMapper({
   const [amountLogic, setAmountLogic] = useState<'separate' | 'doctype'>('separate')
   const [entryTypeMap, setEntryTypeMap] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
+  const [partyNameError, setPartyNameError] = useState('')
   const [detectedFormat, setDetectedFormat] = useState<DetectedFormat | null>(null)
   const [loadedFromCache, setLoadedFromCache] = useState(false)
 
@@ -169,6 +170,12 @@ export default function ColumnMapper({
     const msg = validate()
     if (msg) return setError(msg)
     setError('')
+
+    if (showGlobalSettings && !String(partyName || '').trim()) {
+      setPartyNameError('Please enter the party / company name to continue')
+      return
+    }
+    setPartyNameError('')
 
     saveMapping(partyName, fileLabel, headers, mapping, entryTypeMap, { amountLogic })
     onMappingComplete(mapping, entryTypeMap, { amountLogic })
@@ -280,8 +287,20 @@ export default function ColumnMapper({
               <input type="date" value={recoDate} onChange={(e) => setRecoDate?.(e.target.value)} />
             </label>
             <label className="mapper-field">
-              <span>Enter party / company name for this reconciliation</span>
-              <input type="text" value={partyName} onChange={(e) => setPartyName?.(e.target.value)} placeholder="" />
+              <span>Party Name *</span>
+              <input
+                type="text"
+                value={partyName}
+                onChange={(e) => {
+                  setPartyName?.(e.target.value)
+                  if (partyNameError && e.target.value.trim()) setPartyNameError('')
+                }}
+                placeholder=""
+                style={partyNameError ? { borderColor: 'var(--red)', outlineColor: 'var(--red)' } : undefined}
+              />
+              {partyNameError && (
+                <span style={{ color: 'var(--red)', fontSize: '0.82rem', marginTop: 4 }}>{partyNameError}</span>
+              )}
             </label>
           </div>
         </div>
@@ -293,7 +312,14 @@ export default function ColumnMapper({
             Reset Mapping
           </button>
         )}
-        <button type="button" className="btn btn-primary" onClick={confirm}>Confirm Mapping</button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={confirm}
+          disabled={showGlobalSettings && !String(partyName || '').trim()}
+        >
+          Confirm Mapping
+        </button>
       </div>
     </div>
   )
