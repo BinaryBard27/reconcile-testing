@@ -324,5 +324,26 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
     }
   }
 
+  if (format === 'TALLY' || format === 'ZOHO') {
+    const refLower = String(suggestion.refNo).toLowerCase().trim()
+    const isTallyDefault = refLower === 'vch no.' || refLower === 'vch no'
+    const isZohoDefault = refLower.includes('internal id') || refLower.includes('transaction id') || refLower === 'invoice id'
+    
+    if ((format === 'TALLY' && isTallyDefault) || (format === 'ZOHO' && isZohoDefault)) {
+      const crossRefKeywords = ['ref no', 'reference no', 'supplier invoice', 'vendor invoice', 'party invoice', 'invoice no', 'our ref', 'cross ref']
+      const crossRefHeader = headers.find(h => crossRefKeywords.some(kw => String(h).toLowerCase().includes(kw)))
+      
+      if (crossRefHeader && crossRefHeader !== suggestion.refNo) {
+        suggestion.refNo = crossRefHeader
+        const formatName = format === 'TALLY' ? 'TALLY' : 'ZOHO'
+        if (finalFormat.includes('some columns appear empty')) {
+          finalFormat = `Auto-detected: ${formatName} Format — using [${crossRefHeader}] as reference key — some columns appear empty, please verify`
+        } else {
+          finalFormat = `Auto-detected: ${formatName} Format — using [${crossRefHeader}] as reference key`
+        }
+      }
+    }
+  }
+
   return { format: finalFormat as DetectedFormat, suggestion }
 }

@@ -9,11 +9,9 @@ const STANDARD_COLUMNS = [
   'Reference No',
   'Entry Type',
   'Date',
-  'Amount INR',
-  'Amount USD',
+  'Amount',
   'Currency',
-  'Narration',
-  'Cleared Status',
+  'Narration'
 ]
 
 function formatDate(d: any): string {
@@ -58,14 +56,10 @@ function StandardPreviewTable({ rows }: { rows: any[] }) {
               <td style={{ padding: '10px 14px', fontSize: '0.85rem' }}>{row['Entry Type']}</td>
               <td style={{ padding: '10px 14px', fontSize: '0.85rem' }}>{row['Date']}</td>
               <td style={{ padding: '10px 14px', fontSize: '0.85rem', fontVariantNumeric: 'tabular-nums' }}>
-                {row['Amount INR'] ? Number(row['Amount INR']).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : ''}
-              </td>
-              <td style={{ padding: '10px 14px', fontSize: '0.85rem', fontVariantNumeric: 'tabular-nums' }}>
-                {row['Amount USD'] ? Number(row['Amount USD']).toLocaleString('en-US', { maximumFractionDigits: 2 }) : ''}
+                {row['Amount'] ? Number(row['Amount']).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : ''}
               </td>
               <td style={{ padding: '10px 14px', fontSize: '0.85rem' }}>{row['Currency']}</td>
               <td style={{ padding: '10px 14px', fontSize: '0.85rem', maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Narration']}</td>
-              <td style={{ padding: '10px 14px', fontSize: '0.85rem' }}>{row['Cleared Status']}</td>
             </tr>
           ))}
         </tbody>
@@ -99,11 +93,9 @@ export default function DataConversionFlow({ onBack }: { onBack: () => void }) {
       'Reference No': r.rawRefNo || r.refNo || '',
       'Entry Type': r.entryType || '',
       'Date': formatDate(r.date),
-      'Amount INR': r.detectedCurrency === 'INR' || !r.detectedCurrency ? r.amount : (r.amountINR || ''),
-      'Amount USD': r.amountUSD || (r.detectedCurrency === 'USD' ? r.amount : ''),
+      'Amount': r.amount || '',
       'Currency': r.detectedCurrency || 'INR',
-      'Narration': r.narration || '',
-      'Cleared Status': r.clearedStatus || '',
+      'Narration': r.narration || ''
     }))
     
     setStandardRows(stdRows)
@@ -119,7 +111,7 @@ export default function DataConversionFlow({ onBack }: { onBack: () => void }) {
     }))
 
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Standard Format')
+    XLSX.utils.book_append_sheet(wb, ws, 'LedgerMatch Standard Format')
 
     const baseName = fileName.replace(/\.(csv|xlsx?)/i, '')
     XLSX.writeFile(wb, `${baseName}_standard_format.xlsx`)

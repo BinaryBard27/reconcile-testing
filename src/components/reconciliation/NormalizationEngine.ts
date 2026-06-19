@@ -1,4 +1,4 @@
-export function normalizeRef(ref) {
+export function normalizeRef(ref: unknown) {
   if (!ref && ref !== 0) return ''
   return String(ref)
     .trim()
@@ -9,13 +9,13 @@ export function normalizeRef(ref) {
     .replace(/^0+(?=\d)/, '') // strip leading zeros only if followed by digit
 }
 
-export function normalizeAmount(val) {
+export function normalizeAmount(val: unknown) {
   if (val === null || val === undefined || val === '') return 0
   const num = parseFloat(String(val).replace(/,/g, ''))
   return isNaN(num) ? 0 : Math.abs(num)
 }
 
-export function parseDate(val) {
+export function parseDate(val: unknown) {
   if (!val) return null
   if (val instanceof Date) return val
 
@@ -39,7 +39,7 @@ export function parseDate(val) {
   return isNaN(d.getTime()) ? null : d
 }
 
-export function detectDuplicates(rows) {
+export function detectDuplicates(rows: any[]) {
   // rows: array of { refNo, amount, date, ... }
   const invoiceRows = rows.filter((r: any) => r.entryType === 'invoice' || r.entryType === 'credit_note')
 
@@ -75,7 +75,7 @@ function detectCurrencyFromHeader(header: string): 'INR' | 'USD' | 'EUR' | null 
   return null
 }
 
-export function normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig = { amountLogic: 'separate' }) {
+export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, mappingConfig: any = { amountLogic: 'separate' }) {
   // rawRows: parsed CSV/Excel rows (array of objects)
   // mapping: { refNo, entryType, date, debitAmount, creditAmount, amountINR, ... }
   // entryTypeMap: { 'DR': 'invoice', 'DZ': 'payment', ... }

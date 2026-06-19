@@ -11,7 +11,7 @@ const TABS = [
   { key: 'DUPLICATES', label: 'Duplicates' },
 ]
 
-function fmtMoney(n) {
+function fmtMoney(n: unknown) {
   if (n === null || n === undefined || n === '') return ''
   const num = Number(n)
   if (!Number.isFinite(num)) return String(n)
@@ -24,7 +24,7 @@ function currencySymbol(code: string): string {
   return '₹'
 }
 
-function fmtDate(d) {
+function fmtDate(d: any) {
   if (!d) return ''
   try {
     return d.toLocaleDateString('en-IN')
@@ -33,7 +33,7 @@ function fmtDate(d) {
   }
 }
 
-function statusBadge(status) {
+function statusBadge(status: string) {
   let bg = STATUS_COLORS[status]
   if (!bg && String(status).startsWith('TDS Deduction')) bg = '#8b5cf6'
   if (!bg && String(status).startsWith('TDS Amount')) bg = '#f97316'

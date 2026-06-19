@@ -1,17 +1,17 @@
 import * as XLSX from 'xlsx'
 
 export function exportReconciliation(
-  results, 
-  summary, 
-  qualityIssues, 
-  partyName, 
-  recoDate,
-  remarks,
-  actionStatuses,
-  ourOpeningBalance,
-  partyOpeningBalance,
-  ourRows,
-  partyRows
+  results: any[], 
+  summary: any, 
+  qualityIssues: any, 
+  partyName: string, 
+  recoDate: string,
+  remarks: any,
+  actionStatuses: any,
+  ourOpeningBalance: any[],
+  partyOpeningBalance: any[],
+  ourRows: any[],
+  partyRows: any[]
 ) {
   const finalPartyName = partyName || 'Party'
   let finalRecoDate = recoDate
@@ -26,7 +26,7 @@ export function exportReconciliation(
   const wb = XLSX.utils.book_new()
 
   // Helper to format date
-  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN') : ''
+  const fmtDate = (d: unknown) => d ? new Date(d as any).toLocaleDateString('en-IN') : ''
 
   // -----------------------------------------------------
   // SHEET 1: Summary

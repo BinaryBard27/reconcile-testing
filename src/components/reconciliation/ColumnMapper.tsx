@@ -23,26 +23,35 @@ const ENTRY_TYPE_LABELS = [
   { value: ENTRY_TYPES.IGNORE, label: 'Ignore' },
 ]
 
-function smartDefaultForValue(v: string, sampleNarrations: string[] = []) {
-  const s = String(v ?? '').trim().toLowerCase()
-  if (!s) return ENTRY_TYPES.IGNORE
-
-  if (['dr', 'rv', 'sales', 'invoice', 'inv'].some(x => s.includes(x))) return ENTRY_TYPES.INVOICE
-  if (['dz', 'cr', 'kz', 'payment', 'receipt', 'pay'].some(x => s.includes(x))) return ENTRY_TYPES.PAYMENT
-  if (['dg', 'credit note', 'cn'].some(x => s.includes(x))) return ENTRY_TYPES.CREDIT_NOTE
+function smartDefaultForValue(value: string, narrationSamples: string[]): string {
+  const s = String(value).toLowerCase().trim()
   
-  if (['da', 'xc', 'dy', 'sa', 'journal', 'adj'].some(x => s.includes(x))) {
-    const tdsKeywords = ['tds', '194c', '194j', '194h', '194q', 'tax deducted']
-    for (const narr of sampleNarrations) {
-      const n = String(narr ?? '').toLowerCase()
-      if (tdsKeywords.some(kw => n.includes(kw))) {
-        return ENTRY_TYPES.TDS
-      }
-    }
-    return ENTRY_TYPES.ADJUSTMENT
-  }
-
-  return ENTRY_TYPES.IGNORE
+  // TDS check first — before Journal defaults to Adjustment
+  const tdsKeywords = ['tds', '194c', '194j', '194h', '194i', '194q', 
+                       'tax deducted', 'tax deduction', 'withheld']
+  const hasTDSInValue = tdsKeywords.some(k => s.includes(k))
+  const hasTDSInNarration = (narrationSamples || []).some(n => 
+    tdsKeywords.some(k => String(n).toLowerCase().includes(k))
+  )
+  if (hasTDSInValue || hasTDSInNarration) return 'tds' // ENTRY_TYPES.TDS is 'tds'
+  
+  // Payment check
+  if (['dz', 'kz', 'payment', 'receipt', 'pay', 'bank', 'cash'].some(x => s.includes(x))) 
+    return 'payment' // ENTRY_TYPES.PAYMENT
+  
+  // Invoice check  
+  if (['dr', 'rv', 'sales', 'invoice', 'inv', 'purchase invoice'].some(x => s.includes(x))) 
+    return 'invoice' // ENTRY_TYPES.INVOICE
+  
+  // Credit note
+  if (['dg', 'credit note', 'cn', 'debit note'].some(x => s.includes(x))) 
+    return 'credit_note' // ENTRY_TYPES.CREDIT_NOTE
+  
+  // Adjustment
+  if (['dy', 'da', 'xc', 'sa', 'journal', 'adj', 'knock', 'contra'].some(x => s.includes(x))) 
+    return 'adjustment' // ENTRY_TYPES.ADJUSTMENT
+  
+  return 'ignore' // ENTRY_TYPES.IGNORE
 }
 
 function uniq(arr: any[]) {

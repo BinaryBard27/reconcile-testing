@@ -2,8 +2,9 @@ import Fuse from 'fuse.js'
 import { MATCH_STATUS } from './constants'
 
 const TDS_SECTIONS = [
-  { section: '194C', rate: 0.02, keywords: ['contract','transport','freight','handling','storage','scanning','logistics','warehouse','lashing','stuffing'] },
+  { section: '194C', rate: 0.02, keywords: ['contract', 'transport', 'freight', 'handling', 'scanning', 'logistics', 'lashing', 'stuffing', 'outbound', 'inbound', 'cartage', 'delivery charges'] },
   { section: '194C (Individual)', rate: 0.01, keywords: [] },
+  { section: '194I', rate: 0.10, keywords: ['rent', 'storage', 'warehouse', 'godown', 'space charges', 'facility charges', 'cold storage', 'yard charges'] },
   { section: '194J', rate: 0.10, keywords: ['professional','technical','consultancy','management fee','advisory','software'] },
   { section: '194H', rate: 0.05, keywords: ['commission','brokerage','agency'] },
   { section: '194Q', rate: 0.001, keywords: ['purchase of goods'] },
@@ -60,7 +61,7 @@ export function detectTDS(ourAmount: number, partyAmount: number, narration: str
   return { isTDS: false, tdsSection: '', tdsRate: 0, expectedTDS: 0, actualDeduction: diff }
 }
 
-export function reconcileInvoices(ourRows, partyRows) {
+export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
   // Filter to invoices only
   const ourInvoices = (ourRows ?? []).filter((r) => r.entryType === 'invoice')
   const partyInvoices = (partyRows ?? []).filter((r) => r.entryType === 'invoice')
