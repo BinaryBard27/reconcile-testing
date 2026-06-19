@@ -300,6 +300,11 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
 
   // SAP-specific overrides: fix order of preference for several fields
   if (format === 'SAP') {
+    const sapRef = headers.find(h => headerKey(h) === 'reference')
+    suggestion.refNo = sapRef || 
+      headers.find(h => headerKey(h).includes('ref no')) || 
+      findHeader(['reference', 'ref'])
+
     // Date: prefer 'document date' over 'posting date' to avoid picking 'Posting Date' first
     suggestion.date =
       findExact('Document Date') ||
