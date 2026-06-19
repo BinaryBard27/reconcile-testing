@@ -175,7 +175,7 @@ export default function ColumnMapper({
   }
 
   function resetMapping() {
-    deleteMapping(partyName, fileLabel)
+    deleteMapping(partyName, fileLabel, headers)
     setLoadedFromCache(false)
     setEntryTypeMap({})
 
