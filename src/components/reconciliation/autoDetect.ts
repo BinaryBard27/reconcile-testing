@@ -323,52 +323,47 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
   }
 
   // Validation step for header-based matches
-  let finalFormat = format as string;
+  let finalFormat = format as string
   if (format === 'TALLY' || format === 'SAP' || format === 'ZOHO') {
-    const sampleSize = Math.min(rows.length, 20);
-    const sample = rows.slice(0, sampleSize);
-    let fallbackNeeded = false;
-    let contentSuggestion: MappingSuggestion | null = null;
-    
+    const formatName = format === 'SAP' ? 'SAP' : format === 'TALLY' ? 'Tally' : 'Zoho'
+    finalFormat = `Auto-detected: ${formatName} Format`
+
+    const sampleSize = Math.min(rows.length, 20)
+    const sample = rows.slice(0, sampleSize)
+    let contentSuggestion: MappingSuggestion | null = null
+
     const fieldsToCheck: (keyof MappingSuggestion)[] = [
-      'refNo', 'entryType', 'date', 'amountINR', 'debitAmount', 'creditAmount'
-    ];
+      'refNo', 'entryType', 'date', 'amountINR', 'debitAmount', 'creditAmount',
+    ]
 
     for (const colName of fieldsToCheck) {
-      const field = suggestion[colName] as string;
-      if (!field) continue;
-      
-      let emptyCount = 0;
-      for (const row of sample) {
-        const val = row[field];
-        if (val === null || val === undefined || String(val).trim() === '') {
-          emptyCount++;
-        }
-      }
-      
-      if (sampleSize > 0 && emptyCount / sampleSize > 0.7) {
-        fallbackNeeded = true;
-        if (!contentSuggestion) {
-          contentSuggestion = contentBasedDetection(headers, rows);
-        }
-        (suggestion as any)[colName] = contentSuggestion[colName];
-      }
-    }
+      const field = suggestion[colName] as string
+      if (!field) continue
 
-    if (fallbackNeeded) {
-      const formatName = format === 'SAP' ? 'SAP' : format === 'TALLY' ? 'Tally' : 'Zoho';
-      finalFormat = `Detected: ${formatName} Format — some columns appear empty, please verify`;
+      let emptyCount = 0
+      for (const row of sample) {
+        const val = row[field]
+        if (val === null || val === undefined || String(val).trim() === '') {
+          emptyCount++
+        }
+      }
+
+      if (sampleSize > 0 && emptyCount / sampleSize > 0.7) {
+        if (!contentSuggestion) {
+          contentSuggestion = contentBasedDetection(headers, rows)
+        }
+        ;(suggestion as any)[colName] = contentSuggestion[colName]
+      }
     }
   }
 
-  if (format === 'TALLY' || format === 'ZOHO') {
+  // Only run cross-reference override for non-SAP formats
+  if (format !== 'SAP') {
     const betterRef = findCrossReferenceColumn(headers, rows, suggestion.refNo)
     if (betterRef) {
       suggestion.refNo = betterRef
-      const formatName = format === 'TALLY' ? 'TALLY' : 'ZOHO'
-      if (finalFormat.includes('some columns appear empty')) {
-        finalFormat = `Auto-detected: ${formatName} Format — using "${betterRef}" as reference key — some columns appear empty, please verify`
-      } else {
+      if (format === 'TALLY' || format === 'ZOHO') {
+        const formatName = format === 'TALLY' ? 'Tally' : 'Zoho'
         finalFormat = `Auto-detected: ${formatName} Format — using "${betterRef}" as reference key`
       }
     }
