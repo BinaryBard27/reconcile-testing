@@ -104,11 +104,19 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
 
       const ourCurrency = ourRow.detectedCurrency || 'INR'
       const partyCurrency = party.detectedCurrency || 'INR'
-      const currencyMismatch = ourCurrency !== partyCurrency
+      let currencyMismatch = ourCurrency !== partyCurrency
 
-      // Use INR amounts when currencies differ, direct amounts otherwise
-      const ourAmt = Math.abs(ourRow.amount)
-      const partyAmt = Math.abs(party.amount)
+      let ourAmt = Math.abs(ourRow.amount)
+      let partyAmt = Math.abs(party.amount)
+
+      // Cross-currency matching using USD if available
+      if (ourRow.amountUSD && partyCurrency === 'USD') {
+        ourAmt = Math.abs(ourRow.amountUSD)
+        currencyMismatch = false // Successfully resolved via USD amount
+      } else if (party.amountUSD && ourCurrency === 'USD') {
+        partyAmt = Math.abs(party.amountUSD)
+        currencyMismatch = false // Successfully resolved via USD amount
+      }
 
       const diff = ourAmt - partyAmt
       const pctDiff = ourAmt > 0 ? Math.abs(diff) / ourAmt : 0
@@ -176,8 +184,17 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
       if (fuseResults.length > 0) {
         const best = fuseResults[0]
         const party = best.item
-        const amountClose =
-          Math.abs(Math.abs(ourRow.amount) - Math.abs(party.amount)) / (Math.abs(ourRow.amount) || 1) < 0.05 // within 5%
+        let ourAmt = Math.abs(ourRow.amount)
+        let partyAmt = Math.abs(party.amount)
+        const ourCurrency = ourRow.detectedCurrency || 'INR'
+        const partyCurrency = party.detectedCurrency || 'INR'
+        if (ourRow.amountUSD && partyCurrency === 'USD') {
+          ourAmt = Math.abs(ourRow.amountUSD)
+        } else if (party.amountUSD && ourCurrency === 'USD') {
+          partyAmt = Math.abs(party.amountUSD)
+        }
+        
+        const amountClose = Math.abs(ourAmt - partyAmt) / (ourAmt || 1) < 0.05 // within 5%
 
         if (amountClose) {
           matchedPartyIndexes.add(partyInvoices.indexOf(party))
@@ -212,7 +229,19 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
 
   stillUnmatchedOur.forEach((ourRow) => {
     const amountDateMatch = stillUnmatchedParty.find((p) => {
-      const amountClose = Math.abs(Math.abs(ourRow.amount) - Math.abs(p.amount)) / (Math.abs(ourRow.amount) || 1) < 0.01
+      let ourAmt = Math.abs(ourRow.amount)
+      let partyAmt = Math.abs(p.amount)
+      
+      const ourCurrency = ourRow.detectedCurrency || 'INR'
+      const partyCurrency = p.detectedCurrency || 'INR'
+      
+      if (ourRow.amountUSD && partyCurrency === 'USD') {
+        ourAmt = Math.abs(ourRow.amountUSD)
+      } else if (p.amountUSD && ourCurrency === 'USD') {
+        partyAmt = Math.abs(p.amountUSD)
+      }
+
+      const amountClose = Math.abs(ourAmt - partyAmt) / (ourAmt || 1) < 0.01
       if (!amountClose) return false
       if (!ourRow.date || !p.date) return amountClose
       const dayDiff = Math.abs(ourRow.date - p.date) / (1000 * 60 * 60 * 24)

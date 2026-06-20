@@ -1,8 +1,23 @@
 import { headerKey } from './utils'
 
-export type DetectedFormat = 'TALLY' | 'SAP' | 'ZOHO' | 'CUSTOM' | 'GENERIC' | (string & {})
+export type DetectedFormat = 'TALLY' | 'SAP' | 'ZOHO' | 'CUSTOM' | 'GENERIC' | 'ASCENDAS' | 'AP_AR' | (string & {})
 
-interface MappingSuggestion {
+export interface ColumnScore {
+  columnName: string
+  score: number
+  reason: string
+}
+
+export interface MappingDiagnostics {
+  refNoCandidates: ColumnScore[]
+  dateCandidates: ColumnScore[]
+  amountCandidates: ColumnScore[]
+  entryTypeCandidates: ColumnScore[]
+  confidenceScore: number
+  isConfidenceLow: boolean
+}
+
+export interface MappingSuggestion {
   refNo: string
   entryType: string
   date: string
@@ -21,12 +36,9 @@ function isParseableDate(val: unknown): boolean {
   if (!val) return false
   if (val instanceof Date) return !isNaN(val.getTime())
   const s = String(val).trim()
-  if (!s) return false
-  // ISO
+  if (!s || s.length < 5) return false
   if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(s)) return true
-  // DD/MM/YYYY or DD-MM-YYYY
   if (/^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/.test(s)) return true
-  // Excel serial
   const n = parseFloat(s)
   if (!isNaN(n) && n > 40000 && n < 60000) return true
   const d = new Date(s)
@@ -42,348 +54,278 @@ function isNumericValue(val: unknown): boolean {
 
 function isAlphanumericRef(val: unknown): boolean {
   const s = String(val ?? '').trim()
-  return s.length > 0 && /^[a-zA-Z0-9\-_/\\. ]+$/.test(s)
+  // At least one number, some length
+  return s.length >= 3 && /^[a-zA-Z0-9\-_/\\. ]+$/.test(s) && /\d/.test(s)
 }
 
-function contentBasedDetection(headers: string[], rows: any[]): MappingSuggestion {
-  const suggestion: MappingSuggestion = {
-    refNo: '', entryType: '', date: '', amountINR: '',
-    debitAmount: '', creditAmount: '', amountUSD: '',
-    narration: '', utr: '', clearedStatus: '', amountLogic: 'separate'
-  }
-
-  if (!rows.length || !headers.length) return suggestion
-
+function analyzeColumn(headers: string[], rows: any[], targetHeader: string) {
   const sampleSize = Math.min(rows.length, 50)
   const sample = rows.slice(0, sampleSize)
+  
+  const vals = sample.map(r => r?.[targetHeader])
+  const nonEmpty = vals.filter(v => v !== null && v !== undefined && String(v).trim() !== '')
+  const uniqueSet = new Set(nonEmpty.map(v => String(v).trim()))
+  
+  const dateCount = nonEmpty.filter(v => isParseableDate(v)).length
+  const numericCount = nonEmpty.filter(v => isNumericValue(v)).length
+  const alphanumericCount = nonEmpty.filter(v => isAlphanumericRef(v)).length
+  
+  return {
+    nonEmptyCount: nonEmpty.length,
+    uniqueCount: uniqueSet.size,
+    dateCount,
+    numericCount,
+    alphanumericCount,
+    sampleSize
+  }
+}
 
-  const colAnalysis: Record<string, {
-    uniqueValues: Set<string>
-    dateCount: number
-    numericCount: number
-    alphanumericCount: number
-    nonEmpty: number
-    avgLength: number
-  }> = {}
+function scoreColumn(
+  header: string, 
+  type: 'refNo' | 'date' | 'amount' | 'entryType', 
+  analysis: ReturnType<typeof analyzeColumn>
+): ColumnScore {
+  let headerScore = 0
+  let contentScore = 0
+  let reasonParts: string[] = []
+  
+  const hk = headerKey(header)
+  
+  const hasData = analysis.nonEmptyCount > 0
+  const fillRate = hasData ? analysis.nonEmptyCount / analysis.sampleSize : 0
 
-  for (const h of headers) {
-    const vals = sample.map(r => r?.[h])
-    const nonEmpty = vals.filter(v => v !== null && v !== undefined && String(v).trim() !== '')
-    const uniqueSet = new Set(nonEmpty.map(v => String(v).trim()))
-    const dateCount = nonEmpty.filter(v => isParseableDate(v)).length
-    const numericCount = nonEmpty.filter(v => isNumericValue(v)).length
-    const alphanumericCount = nonEmpty.filter(v => isAlphanumericRef(v)).length
-    const avgLength = nonEmpty.length > 0
-      ? nonEmpty.reduce((s, v) => s + String(v).length, 0) / nonEmpty.length
-      : 0
+  if (type === 'refNo') {
+    if (hk === 'reference' || hk === 'ref no' || hk === 'invoice no' || hk === 'document no' || hk === 'vch no' || hk === 'voucher no') {
+      headerScore = 1.0
+      reasonParts.push(`Exact header match (${header})`)
+    } else if (hk.includes('ref') || hk.includes('inv') || hk.includes('doc')) {
+      headerScore = 0.5
+      reasonParts.push(`Partial header match (${header})`)
+    }
 
-    colAnalysis[h] = {
-      uniqueValues: uniqueSet,
-      dateCount,
-      numericCount,
-      alphanumericCount,
-      nonEmpty: nonEmpty.length,
-      avgLength
+    if (hasData) {
+      const alphaRate = analysis.alphanumericCount / analysis.nonEmptyCount
+      const uniqueness = analysis.uniqueCount / analysis.nonEmptyCount
+      contentScore = (alphaRate * 0.5) + (uniqueness * 0.5)
+      reasonParts.push(`${Math.round(alphaRate*100)}% valid refs, ${Math.round(uniqueness*100)}% uniqueness`)
+    }
+  } 
+  else if (type === 'date') {
+    if (hk === 'date' || hk === 'document date' || hk === 'posting date' || hk === 'payment date' || hk === 'invoice dt') {
+      headerScore = 1.0
+      reasonParts.push(`Exact header match (${header})`)
+    } else if (hk.includes('date') || hk.includes('dt')) {
+      headerScore = 0.6
+      reasonParts.push(`Partial header match (${header})`)
+    }
+
+    if (hasData) {
+      const dateRate = analysis.dateCount / analysis.nonEmptyCount
+      contentScore = dateRate
+      reasonParts.push(`${Math.round(dateRate*100)}% parseable dates`)
     }
   }
+  else if (type === 'amount') {
+    if (hk === 'amount' || hk === 'value' || hk === 'balance' || hk === 'company code currency value' || hk === 'loc.curr.amount') {
+      headerScore = 1.0
+      reasonParts.push(`Exact header match (${header})`)
+    } else if (hk.includes('amt') || hk.includes('amount') || hk.includes('debit') || hk.includes('credit')) {
+      headerScore = 0.6
+      reasonParts.push(`Partial header match (${header})`)
+    }
 
-  // Find entry type column: 2-8 unique values
-  for (const h of headers) {
-    const a = colAnalysis[h]
-    if (a.uniqueValues.size >= 2 && a.uniqueValues.size <= 8 && a.nonEmpty > sampleSize * 0.5) {
-      if (!suggestion.entryType) suggestion.entryType = h
+    if (hasData) {
+      const numRate = analysis.numericCount / analysis.nonEmptyCount
+      contentScore = numRate
+      reasonParts.push(`${Math.round(numRate*100)}% numeric`)
     }
   }
-
-  // Find reference number: >80% unique alphanumeric
-  for (const h of headers) {
-    const a = colAnalysis[h]
-    if (a.nonEmpty > 0 && a.alphanumericCount / a.nonEmpty > 0.8 && a.uniqueValues.size / a.nonEmpty > 0.8) {
-      if (h !== suggestion.entryType && !suggestion.refNo) suggestion.refNo = h
+  else if (type === 'entryType') {
+    if (hk === 'type' || hk === 'document type' || hk === 'vch type' || hk === 'transaction type' || hk === 'series') {
+      headerScore = 1.0
+      reasonParts.push(`Exact header match (${header})`)
+    } else if (hk.includes('type')) {
+      headerScore = 0.5
+      reasonParts.push(`Partial header match (${header})`)
     }
-  }
 
-  // Find date column: >80% parseable dates
-  for (const h of headers) {
-    const a = colAnalysis[h]
-    if (a.nonEmpty > 0 && a.dateCount / a.nonEmpty > 0.8) {
-      if (!suggestion.date) suggestion.date = h
-    }
-  }
-
-  // Find amount columns: >90% numeric
-  const numericCols: string[] = []
-  for (const h of headers) {
-    const a = colAnalysis[h]
-    if (a.nonEmpty > 0 && a.numericCount / a.nonEmpty > 0.9) {
-      if (h !== suggestion.date && h !== suggestion.refNo && h !== suggestion.entryType) {
-        numericCols.push(h)
+    if (hasData && analysis.nonEmptyCount > 10) {
+      const isDateCol = analysis.dateCount / analysis.nonEmptyCount > 0.8
+      const isNumCol = analysis.numericCount / analysis.nonEmptyCount > 0.8
+      
+      if (isDateCol || isNumCol) {
+        contentScore = 0.0
+        reasonParts.push(`Penalized: Primarily dates or numbers`)
+      } else if (analysis.uniqueCount >= 2 && analysis.uniqueCount <= 15) {
+        contentScore = 1.0
+        reasonParts.push(`${analysis.uniqueCount} categorical unique values`)
+      } else {
+        contentScore = 0.0
+        reasonParts.push(`Too many or too few unique values (${analysis.uniqueCount})`)
       }
+    } else if (hasData && analysis.uniqueCount > 0) {
+       contentScore = 0.5
+       reasonParts.push(`Sparse but has ${analysis.uniqueCount} categorical values`)
     }
   }
 
-  // Check for debit/credit by header name
-  const debitCol = numericCols.find(h => /debit|dr/i.test(h))
-  const creditCol = numericCols.find(h => /credit|cr/i.test(h))
-  if (debitCol && creditCol) {
-    suggestion.debitAmount = debitCol
-    suggestion.creditAmount = creditCol
-    suggestion.amountLogic = 'separate'
-  } else if (numericCols.length >= 2) {
-    suggestion.debitAmount = numericCols[0]
-    suggestion.creditAmount = numericCols[1]
-    suggestion.amountLogic = 'separate'
-  } else if (numericCols.length === 1) {
-    suggestion.amountINR = numericCols[0]
-    suggestion.amountLogic = 'separate'
+  // Weight header and content heavily based on presence
+  let totalScore = 0
+  if (hasData) {
+    totalScore = (headerScore * 0.4) + (contentScore * 0.4) + (fillRate * 0.2)
+  } else {
+    // If no data, rely purely on header but penalize
+    totalScore = headerScore * 0.3
+    reasonParts.push('Column is completely empty')
   }
 
-  // Find narration: longest average text, non-numeric, non-date
-  let bestNarr = ''
-  let bestNarrLen = 0
-  for (const h of headers) {
-    const a = colAnalysis[h]
-    if (h === suggestion.refNo || h === suggestion.date || h === suggestion.entryType) continue
-    if (numericCols.includes(h)) continue
-    if (a.avgLength > bestNarrLen && a.nonEmpty > sampleSize * 0.3) {
-      bestNarrLen = a.avgLength
-      bestNarr = h
-    }
+  return {
+    columnName: header,
+    score: totalScore,
+    reason: reasonParts.join(' | ')
   }
-  suggestion.narration = bestNarr
-
-  return suggestion
 }
 
-function findCrossReferenceColumn(
-  headers: string[],
-  rows: any[],
-  currentRefNo: string
-): string | null {
-  const crossRefKeywords = [
-    'ref no', 'reference no', 'supplier invoice', 'vendor invoice',
-    'party invoice', 'invoice no', 'our ref', 'cross ref', 'invoice',
-  ]
-
-  const candidates = headers.filter(h => {
-    const hk = h.toLowerCase().replace(/\s+/g, ' ').trim()
-    return crossRefKeywords.some(k => hk.includes(k)) && h !== currentRefNo
-  })
-
-  for (const col of candidates) {
-    const sampleVals = rows.slice(0, 20)
-      .map(r => String(r?.[col] ?? '').trim())
-      .filter(Boolean)
-    const hasLongNumericRefs = sampleVals
-      .filter(v => /^\d{9,}$/.test(v.replace(/\.0+$/, ''))).length
-    if (hasLongNumericRefs > sampleVals.length * 0.3) {
-      return col
-    }
-  }
-  return null
-}
-
-export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): { format: DetectedFormat, suggestion: MappingSuggestion } {
+export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): { 
+  format: DetectedFormat, 
+  suggestion: MappingSuggestion,
+  diagnostics: MappingDiagnostics 
+} {
   const normHeaders = headers.map(h => headerKey(h))
   const headerString = normHeaders.join(' ')
 
   let format: DetectedFormat = 'GENERIC'
 
-  // Tally-specific detection
-  if (headerString.includes('vch no') || headerString.includes('vch type') || headerString.includes('particulars')) {
+  // Advanced format detection
+  if (headerString.includes('document type') && (headerString.includes('company code') || headerString.includes('assignment') || headerString.includes('clearing document'))) {
+    format = 'SAP'
+  } else if (headerString.includes('vch no') && headerString.includes('vch type') && headerString.includes('particulars')) {
     format = 'TALLY'
+  } else if (headerString.includes('invoice no') && headerString.includes('payment date') && headerString.includes('credit')) {
+    format = 'ASCENDAS'
+  } else if (headerString.includes('document no') && headerString.includes('due date') && headerString.includes('balance')) {
+    format = 'AP_AR'
   } else if (headerString.includes('voucher type') && headerString.includes('supplier invoice no')) {
     format = 'ZOHO'
-  } else if (headerString.includes('document type') || headerString.includes('doc type') || headerString.includes('company code') || headerString.includes('assignment') || headerString.includes('clearing document')) {
-    format = 'SAP'
   } else if (headerString.includes('zoho') || (headerString.includes('customer name') && headerString.includes('invoice status'))) {
     format = 'ZOHO'
-  } else if (headerString.includes('voucher type')) {
-    format = 'TALLY'
   }
 
-  // If no known format, try content-based detection
-  if (format === 'GENERIC') {
-    format = 'CUSTOM'
-    const contentSuggestion = contentBasedDetection(headers, rows)
-    // Still try header-keyword detection as primary
-    const findHeader = (keywords: string[]) => {
-      for (const kw of keywords) {
-        const match = headers.find(h => headerKey(h).includes(kw))
-        if (match) return match
-      }
-      return ''
-    }
-
-    const refNo = findHeader(['invoice no', 'document no', 'ref no', 'ref', 'number'])
-    const entryType = findHeader(['type', 'transaction type'])
-    const date = findHeader(['date'])
-    const narration = findHeader(['narration', 'particulars', 'text', 'description', 'memo', 'notes'])
-    const utr = findHeader(['utr', 'cheque', 'payment ref', 'reference'])
-
-    const customSuggestion: MappingSuggestion = {
-      refNo: refNo || contentSuggestion.refNo,
-      entryType: entryType || contentSuggestion.entryType,
-      date: date || contentSuggestion.date,
-      amountINR: contentSuggestion.amountINR,
-      debitAmount: contentSuggestion.debitAmount,
-      creditAmount: contentSuggestion.creditAmount,
-      amountUSD: contentSuggestion.amountUSD,
-      narration: narration || contentSuggestion.narration,
-      utr: utr || contentSuggestion.utr,
-      clearedStatus: contentSuggestion.clearedStatus,
-      amountLogic: contentSuggestion.amountLogic,
-    }
-
-    let customLabel: DetectedFormat = 'CUSTOM'
-    const betterRef = findCrossReferenceColumn(headers, rows, customSuggestion.refNo)
-    if (betterRef) {
-      customSuggestion.refNo = betterRef
-      customLabel = `Auto-detected: CUSTOM Format — using "${betterRef}" as reference key` as DetectedFormat
-    }
-
-    return {
-      format: customLabel,
-      suggestion: customSuggestion,
-    }
+  const diagnostics: MappingDiagnostics = {
+    refNoCandidates: [],
+    dateCandidates: [],
+    amountCandidates: [],
+    entryTypeCandidates: [],
+    confidenceScore: 0,
+    isConfidenceLow: true
   }
 
-  // Find best matches for columns (generic, includes-based)
-  const findHeader = (keywords: string[]) => {
-    for (const kw of keywords) {
-      const match = headers.find(h => headerKey(h).includes(kw))
-      if (match) return match
-    }
-    return ''
+  // Pre-compute analysis for all columns
+  const columnAnalysis: Record<string, ReturnType<typeof analyzeColumn>> = {}
+  for (const h of headers) {
+    columnAnalysis[h] = analyzeColumn(headers, rows, h)
   }
 
-  // Exact header name match (normalized)
-  const findExact = (target: string) => {
-    return headers.find(h => headerKey(h) === headerKey(target)) || ''
+  // Score all columns
+  for (const h of headers) {
+    diagnostics.refNoCandidates.push(scoreColumn(h, 'refNo', columnAnalysis[h]))
+    diagnostics.dateCandidates.push(scoreColumn(h, 'date', columnAnalysis[h]))
+    diagnostics.amountCandidates.push(scoreColumn(h, 'amount', columnAnalysis[h]))
+    diagnostics.entryTypeCandidates.push(scoreColumn(h, 'entryType', columnAnalysis[h]))
+  }
+
+  // Sort descending by score
+  diagnostics.refNoCandidates.sort((a, b) => b.score - a.score)
+  diagnostics.dateCandidates.sort((a, b) => b.score - a.score)
+  diagnostics.amountCandidates.sort((a, b) => b.score - a.score)
+  diagnostics.entryTypeCandidates.sort((a, b) => b.score - a.score)
+
+  // Keep top 20
+  diagnostics.refNoCandidates = diagnostics.refNoCandidates.slice(0, 20)
+  diagnostics.dateCandidates = diagnostics.dateCandidates.slice(0, 20)
+  diagnostics.amountCandidates = diagnostics.amountCandidates.slice(0, 20)
+  diagnostics.entryTypeCandidates = diagnostics.entryTypeCandidates.slice(0, 20)
+
+  const topEntry = diagnostics.entryTypeCandidates[0]
+  // Only auto-map entry type if it has a good score AND either matches the header or is an explicit SAP/TALLY format
+  let entryTypeCol = ''
+  if (topEntry && topEntry.score > 0.4) {
+    if (format === 'SAP' || format === 'TALLY' || topEntry.reason.includes('match')) {
+      entryTypeCol = topEntry.columnName
+    }
   }
 
   const suggestion: MappingSuggestion = {
-    refNo: findHeader(['vch no', 'invoice no', 'document no', 'assignment', 'ref no', 'ref']),
-    entryType: findHeader(['vch type', 'document type', 'type', 'transaction type']),
-    date: findHeader(['date', 'posting date', 'document date']),
+    refNo: diagnostics.refNoCandidates[0]?.columnName || '',
+    date: diagnostics.dateCandidates[0]?.columnName || '',
+    entryType: entryTypeCol,
     amountINR: '',
     debitAmount: '',
     creditAmount: '',
     amountUSD: '',
-    narration: findHeader(['narration', 'particulars', 'text', 'description']),
-    utr: findHeader(['utr', 'cheque', 'reference', 'payment ref']),
-    clearedStatus: findHeader(['status', 'clearing', 'recon']),
+    narration: '',
+    utr: '',
+    clearedStatus: '',
     amountLogic: 'separate'
   }
 
-  // Amount logic detection
-  const hasDebit = findHeader(['debit', 'dr'])
-  const hasCredit = findHeader(['credit', 'cr'])
-  const hasAmount = findHeader(['amount', 'amt', 'value', 'balance'])
+  // Amount logic (debit/credit vs single column)
+  const debitCol = diagnostics.amountCandidates.find(c => headerKey(c.columnName).includes('debit') || headerKey(c.columnName) === 'dr')?.columnName
+  const creditCol = diagnostics.amountCandidates.find(c => c.columnName !== debitCol && (headerKey(c.columnName).includes('credit') || headerKey(c.columnName) === 'cr'))?.columnName
 
-  if (hasDebit && hasCredit) {
-    suggestion.debitAmount = hasDebit
-    suggestion.creditAmount = hasCredit
-    suggestion.amountLogic = 'separate'
-  } else if (format === 'SAP' && suggestion.entryType) {
-    // SAP: prioritize 'Company Code Currency Value' (exact match) before generic 'value'
-    suggestion.amountINR =
-      findExact('Company Code Currency Value') ||
-      findHeader(['amount in local currency', 'loc.curr.amount']) ||
-      hasAmount
+  if (format === 'SAP') {
+    const sapAmt = headers.find(h => headerKey(h) === 'company code currency value') || diagnostics.amountCandidates[0]?.columnName
+    suggestion.amountINR = sapAmt || ''
     suggestion.docTypeColumn = suggestion.entryType
     suggestion.amountLogic = 'doctype'
+  } else if (debitCol && creditCol) {
+    suggestion.debitAmount = debitCol
+    suggestion.creditAmount = creditCol
+    suggestion.amountLogic = 'separate'
   } else {
-    suggestion.amountINR = hasAmount
+    suggestion.amountINR = diagnostics.amountCandidates[0]?.columnName || ''
     suggestion.amountLogic = 'separate'
   }
 
-  // SAP-specific overrides: fix order of preference for several fields
+  // Format specific overrides
   if (format === 'SAP') {
-    // For SAP: always prefer the standalone 'Reference' column
-    // Never use 'Document Number' as the reference key
-    const sapRefCol = headers.find(h => {
-      const hk = h.toLowerCase().replace(/\s+/g, ' ').trim()
-      return hk === 'reference'  // exact match only
-    })
-
-    suggestion.refNo = sapRefCol || ''
-
-    // Safety check: if 'Document Number' was selected, override it
-    if (suggestion.refNo.toLowerCase().includes('document number')) {
-      suggestion.refNo = sapRefCol || ''
+    const exactRef = headers.find(h => headerKey(h) === 'reference')
+    if (exactRef && columnAnalysis[exactRef].nonEmptyCount > 0) {
+      suggestion.refNo = exactRef
     }
-
-    console.log('SAP refNo detected:', suggestion.refNo)
-
-    // Date: prefer 'document date' over 'posting date' to avoid picking 'Posting Date' first
-    suggestion.date =
-      findExact('Document Date') ||
-      findHeader(['document date']) ||
-      findExact('Posting Date') ||
-      findHeader(['posting date']) ||
-      suggestion.date
-
-    // Narration: exact match for 'text' BEFORE generic 'text' search, to avoid 'Document Header Text'
-    // 'text' alone (exact) is the free-text line item description in SAP
-    suggestion.narration =
-      findExact('text') ||
-      findHeader(['narration', 'particulars', 'description']) ||
-      suggestion.narration
-
-    // UTR: SAP stores bank UTR numbers in 'Document Header Text'
-    suggestion.utr =
-      findExact('Document Header Text') ||
-      findHeader(['utr', 'cheque', 'payment ref']) ||
-      suggestion.utr
+    const docCurrencyValue = headers.find(h => headerKey(h) === 'document currency value' || headerKey(h) === 'amount in doc. curr.')
+    if (docCurrencyValue) {
+      suggestion.amountUSD = docCurrencyValue
+    }
+  } else if (format === 'ASCENDAS') {
+    const invoiceNo = headers.find(h => headerKey(h) === 'invoice no')
+    if (invoiceNo) suggestion.refNo = invoiceNo
+    const invoiceDt = headers.find(h => headerKey(h) === 'invoice dt')
+    if (invoiceDt) suggestion.date = invoiceDt
   }
 
-  // Validation step for header-based matches
-  let finalFormat = format as string
-  if (format === 'TALLY' || format === 'SAP' || format === 'ZOHO') {
-    const formatName = format === 'SAP' ? 'SAP' : format === 'TALLY' ? 'Tally' : 'Zoho'
-    finalFormat = `Auto-detected: ${formatName} Format`
+  // Calculate overall confidence
+  const topScores = [
+    diagnostics.refNoCandidates[0]?.score || 0,
+    diagnostics.dateCandidates[0]?.score || 0,
+    diagnostics.amountCandidates[0]?.score || 0
+  ]
+  const avgConfidence = topScores.reduce((a, b) => a + b, 0) / 3
+  diagnostics.confidenceScore = avgConfidence
+  diagnostics.isConfidenceLow = avgConfidence < 0.55
 
-    const sampleSize = Math.min(rows.length, 20)
-    const sample = rows.slice(0, sampleSize)
-    let contentSuggestion: MappingSuggestion | null = null
+  // Determine final format label
+  let finalFormatStr = format as string
+  if (format === 'SAP') finalFormatStr = 'Auto-detected: SAP Format'
+  else if (format === 'TALLY') finalFormatStr = 'Auto-detected: Tally Format'
+  else if (format === 'ZOHO') finalFormatStr = 'Auto-detected: Zoho Format'
+  else if (format === 'ASCENDAS') finalFormatStr = 'Auto-detected: Ascendas AP Statement'
+  else if (format === 'AP_AR') finalFormatStr = 'Auto-detected: AP/AR Statement'
+  else if (format === 'CUSTOM' || format === 'GENERIC') finalFormatStr = 'Auto-detected: Custom/Generic Format'
 
-    const fieldsToCheck: (keyof MappingSuggestion)[] = [
-      'refNo', 'entryType', 'date', 'amountINR', 'debitAmount', 'creditAmount',
-    ]
-
-    for (const colName of fieldsToCheck) {
-      const field = suggestion[colName] as string
-      if (!field) continue
-
-      let emptyCount = 0
-      for (const row of sample) {
-        const val = row[field]
-        if (val === null || val === undefined || String(val).trim() === '') {
-          emptyCount++
-        }
-      }
-
-      if (sampleSize > 0 && emptyCount / sampleSize > 0.7) {
-        if (!contentSuggestion) {
-          contentSuggestion = contentBasedDetection(headers, rows)
-        }
-        ;(suggestion as any)[colName] = contentSuggestion[colName]
-      }
-    }
+  return { 
+    format: finalFormatStr as DetectedFormat, 
+    suggestion, 
+    diagnostics 
   }
-
-  // Only run cross-reference override for non-SAP formats
-  if (format !== 'SAP') {
-    const betterRef = findCrossReferenceColumn(headers, rows, suggestion.refNo)
-    if (betterRef) {
-      suggestion.refNo = betterRef
-      if (format === 'TALLY' || format === 'ZOHO') {
-        const formatName = format === 'TALLY' ? 'Tally' : 'Zoho'
-        finalFormat = `Auto-detected: ${formatName} Format — using "${betterRef}" as reference key`
-      }
-    }
-  }
-
-  return { format: finalFormat as DetectedFormat, suggestion }
 }

@@ -11,8 +11,14 @@ export function parseFile(file) {
         header: true,
         skipEmptyLines: true,
         complete: (results) => {
-          const headers = (results.meta.fields ?? []).map(normalizeHeader)
-          const rows = results.data ?? []
+          const rows = (results.data ?? []).map((r: any) => {
+            const nr: any = {}
+            for (const [k, v] of Object.entries(r)) {
+              nr[normalizeHeader(k)] = v
+            }
+            return nr
+          })
+          const headers = rows.length > 0 ? Object.keys(rows[0]) : []
           resolve({ headers, rows })
         },
         error: reject,
@@ -27,8 +33,15 @@ export function parseFile(file) {
         const workbook = XLSX.read(data, { type: 'array' })
         const firstSheet = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[firstSheet]
-        const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: true })
-        const headers = rows.length > 0 ? Object.keys(rows[0]).map(normalizeHeader) : []
+        const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: true })
+        const rows = rawRows.map((r: any) => {
+          const nr: any = {}
+          for (const [k, v] of Object.entries(r)) {
+            nr[normalizeHeader(k)] = v
+          }
+          return nr
+        })
+        const headers = rows.length > 0 ? Object.keys(rows[0]) : []
         resolve({ headers, rows })
       }
       reader.onerror = reject

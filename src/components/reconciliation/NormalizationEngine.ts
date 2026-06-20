@@ -75,7 +75,7 @@ function detectCurrencyFromHeader(header: string): 'INR' | 'USD' | 'EUR' | null 
   return null
 }
 
-export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, mappingConfig: any = { amountLogic: 'separate' }) {
+export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, mappingConfig: any = { amountLogic: 'separate' }, format?: string) {
   // rawRows: parsed CSV/Excel rows (array of objects)
   // mapping: { refNo, entryType, date, debitAmount, creditAmount, amountINR, ... }
   // entryTypeMap: { 'DR': 'invoice', 'DZ': 'payment', ... }
@@ -122,12 +122,20 @@ export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, m
         debit = normalizeAmount(row?.[mapping.debitAmount])
         credit = normalizeAmount(row?.[mapping.creditAmount])
         
+        const isAPStatement = String(format || '').toLowerCase().includes('ap statement')
+        if (row?.[mapping.refNo] === 246779410007 || row?.[mapping.refNo] === '246779410007') {
+          console.log(`[DEBUG] normalizeRows format='${format}', isAPStatement=${isAPStatement}, credit=${credit}, debit=${debit}`);
+        }
         // Infer entryType from separate columns if not explicitly mapped
         if (!mapping.entryType) {
-          entryType = debit > 0 ? 'invoice' : (credit > 0 ? 'payment' : 'ignore')
+          if (isAPStatement) {
+            entryType = credit > 0 ? 'invoice' : (debit > 0 ? 'payment' : 'ignore')
+          } else {
+            entryType = debit > 0 ? 'invoice' : (credit > 0 ? 'payment' : 'ignore')
+          }
         }
         
-        amount = entryType === 'invoice' ? debit : credit
+        amount = entryType === 'invoice' ? (isAPStatement ? credit : debit) : (isAPStatement ? debit : credit)
         if (amount === 0) amount = debit || credit
       } else if (mapping.amountINR) {
         const rawVal = row?.[mapping.amountINR]
@@ -148,12 +156,10 @@ export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, m
         }
       }
 
-      if (!mapping.entryType) {
+      if (!mapping.entryType && entryType === 'ignore') {
         // No entry type column mapped — infer from amount sign or default to invoice
         if (mapping.amountINR && rawAmt !== undefined) {
           entryType = rawAmt < 0 ? 'payment' : 'invoice'
-        } else if (logic === 'separate') {
-          entryType = debit > 0 ? 'invoice' : credit > 0 ? 'payment' : 'ignore'
         } else {
           entryType = 'invoice' // default to invoice if cannot determine
         }

@@ -6,7 +6,6 @@ import { normalizeHeader } from '../src/components/reconciliation/utils.js'
 import { detectFormatAndSuggestMapping } from '../src/components/reconciliation/autoDetect.js'
 import { normalizeRows, separateOpeningBalance } from '../src/components/reconciliation/NormalizationEngine.js'
 import { reconcileInvoices, buildDetailedSummary } from '../src/components/reconciliation/ReconciliationEngine.js'
-import { ENTRY_TYPES } from '../src/components/reconciliation/constants.js'
 
 function smartDefaultForValue(value: string, narrationSamples: string[]): string {
   const s = String(value).toLowerCase().trim()
@@ -54,6 +53,9 @@ function parseFileSync(filePath: string) {
       }
       return nr
     })
+    if (path.basename(path.dirname(filePath)).includes('SIDDHARTHA')) {
+      // console.log('SIDDHARTHA partyData[0]:', rows[0])
+    }
     const headers = rows.length > 0 ? Object.keys(rows[0] as any) : []
     return { headers, rows }
   }
@@ -80,9 +82,9 @@ function buildEntryTypeMap(mapping: any, rawRows: any[]) {
 
 function processFile(filePath: string) {
   const parsed = parseFileSync(filePath)
-  if (!parsed) return null
+  if (!parsed || parsed.headers.length === 0) return null
   
-  const { format, suggestion } = detectFormatAndSuggestMapping(parsed.headers, parsed.rows)
+  const { format, suggestion, diagnostics } = detectFormatAndSuggestMapping(parsed.headers, parsed.rows)
   const entryTypeMap = buildEntryTypeMap(suggestion, parsed.rows)
   
   const normalized = normalizeRows(parsed.rows, suggestion, entryTypeMap, { amountLogic: suggestion.amountLogic }, format)
@@ -92,26 +94,38 @@ function processFile(filePath: string) {
     name: path.basename(filePath),
     format,
     mapping: suggestion,
+    diagnostics,
     entryTypeMap,
     normalizedRows: transactionRows,
-    openingBalance: openingBalanceRows
+    openingBalance: openingBalanceRows,
+    rawRowCount: parsed.rows.length
   }
 }
 
-const testDataDir = path.resolve('./test-data/ext/New folder')
-if (!fs.existsSync(testDataDir)) {
-  console.error("Test data not found. Please extract 'New folder.zip' to 'test-data/ext/'.")
-  process.exit(1)
-}
+const baseline: Record<string, any> = {
+  "10. SHAH TC GLOBAL EXIM LLP": { exact: 0, coverage: 0.0 },
+  "11. SCOPE LOGISTICS SERVICES INDIA PVT": { exact: 0, coverage: 0.0 },
+  "12. STREAM LINE LOGISTICS PVT.LTD": { exact: 0, coverage: 0.0 },
+  "15. SIDDHARTHA LOGISTICS FTWZ PRIVATE": { exact: 157, coverage: 77.0 },
+  "16. SCOPE CHEMICALS PVT.LTD": { exact: 0, coverage: 0.0 },
+  "19. BARNET INDIA PRIVATE LIMITED": { exact: 0, coverage: 0.0 },
+  "22. DELIGHT LOGISTICS PRIVATE LIMITED": { exact: 0, coverage: 0.0 },
+  "23. SML Limited": { exact: 0, coverage: 0.0 },
+  "24. Hub Sports Ltd": { exact: 0, coverage: 0.0 },
+  "4. BASF INDIA LIMITED": { exact: 0, coverage: 0.0 },
+  "6. ONNSYNEX VENTURES PVT.LTD": { exact: 0, coverage: 0.0 },
+  "7. SRIKARAM PRESCIENCE PVT. LTD": { exact: 0, coverage: 0.0 },
+  "9. KUEHNE NAGEL PVT. LTD": { exact: 0, coverage: 0.0 }
+};
 
+const testDataDir = path.resolve('./test-data/ext/New folder')
 const dirs = fs.readdirSync(testDataDir, { withFileTypes: true }).filter(d => d.isDirectory())
 
-console.log('--- MICROLEDGER VALIDATION FRAMEWORK ---')
+let report = `# MicroLedger Reconciliation Regression Report\n\n`
+report += `| Dataset Name | Format (Ours/Party) | Confidence | Records | Invoices Extracted | Payments Extracted | Exact | Fuzzy | TDS | Missing (Party) | Missing (Ours) | Match Rate | Coverage | Δ Exact | Δ Coverage |\n`
+report += `|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n`
 
-let totalProcessed = 0
-let totalMatched = 0
-let totalTDS = 0
-let totalMismatch = 0
+const resultsList = [];
 
 for (const dir of dirs) {
   const dirPath = path.join(testDataDir, dir.name)
@@ -121,15 +135,10 @@ for (const dir of dirs) {
   let partyLedger = null
   
   for (const f of files) {
-    // Skip known purely supplementary files based on name heuristic
-    if (f.toLowerCase().includes('scrap') || f.toLowerCase().includes('working') || f.toLowerCase().includes('payment')) {
-      continue
-    }
-    
+    if (f.toLowerCase().includes('scrap') || f.toLowerCase().includes('working') || f.toLowerCase().includes('payment')) continue
     const fp = path.join(dirPath, f)
     const result = processFile(fp)
     if (!result) continue
-    
     if (String(result.format).includes('SAP')) {
       if (!ourBooks) ourBooks = result
     } else {
@@ -142,34 +151,62 @@ for (const dir of dirs) {
     partyLedger = processFile(path.join(dirPath, files[1]))
   }
 
-  if (!ourBooks || !partyLedger) {
-    console.log(`\n[SKIPPED] ${dir.name} - Could not identify Our Books vs Party Ledger`)
-    continue
-  }
+  if (!ourBooks || !partyLedger) continue
 
-  console.log(`\n[DATASET] ${dir.name}`)
-  console.log(`  Our Books: ${ourBooks.name} (${ourBooks.format}) - ${ourBooks.normalizedRows.length} rows`)
-  console.log(`  Party Ledger: ${partyLedger.name} (${partyLedger.format}) - ${partyLedger.normalizedRows.length} rows`)
+  if (dir.name.includes('SIDDHARTHA')) {
+    console.log(`SIDDHARTHA DEBUG:`)
+    console.log(`OurBooks mapping:`, ourBooks.mapping)
+    console.log(`PartyLedger mapping:`, partyLedger.mapping)
+    console.log(`PartyLedger format:`, partyLedger.format)
+    console.log(`PartyLedger first row raw:`, partyLedger.normalizedRows[0]?.rawRow)
+    console.log(`PartyLedger first row normalized:`, partyLedger.normalizedRows[0])
+  }
 
   const results = reconcileInvoices(ourBooks.normalizedRows, partyLedger.normalizedRows)
   const summary = buildDetailedSummary(results, ourBooks.normalizedRows, partyLedger.normalizedRows, ourBooks.openingBalance, partyLedger.openingBalance)
   
-  console.log(`  Metrics:`)
-  console.log(`    Total Reconciled: ${summary.totalRows}`)
-  console.log(`    Matched: ${summary.matched}`)
-  console.log(`    TDS Flagged: ${summary.tdsFlagged}`)
-  console.log(`    Amount Mismatches: ${summary.mismatch}`)
-  console.log(`    Missing in Ours: ${summary.missingInOurs}`)
-  console.log(`    Missing in Party: ${summary.missingInParty}`)
+  const ourInv = ourBooks.normalizedRows.filter(r => r.entryType === 'invoice').length
+  const ourPay = ourBooks.normalizedRows.filter(r => r.entryType === 'payment').length
+  const ptyInv = partyLedger.normalizedRows.filter(r => r.entryType === 'invoice').length
+  const ptyPay = partyLedger.normalizedRows.filter(r => r.entryType === 'payment').length
+
+  const matchRate = (summary.matched / Math.max(1, ourInv + ptyInv)) * 100
+  const coverage = (summary.matched / Math.max(1, ourBooks.normalizedRows.length)) * 100
+
+  const b = baseline[dir.name] || { exact: 0, coverage: 0.0 }
+  const deltaExact = summary.matched - b.exact
+  const deltaCoverage = coverage - b.coverage
   
-  totalProcessed++
-  totalMatched += summary.matched
-  totalTDS += summary.tdsFlagged
-  totalMismatch += summary.mismatch
+  const formatStr = `${ourBooks.format.replace('Auto-detected: ', '').replace(' Format', '')} / ${partyLedger.format.replace('Auto-detected: ', '').replace(' Format', '')}`
+  const avgConf = ((ourBooks.diagnostics.confidenceScore + partyLedger.diagnostics.confidenceScore) / 2 * 100).toFixed(1)
+
+  resultsList.push({
+    name: dir.name,
+    formatStr,
+    avgConf,
+    recordsStr: `${ourBooks.rawRowCount}/${partyLedger.rawRowCount}`,
+    invStr: `${ourInv}/${ptyInv}`,
+    payStr: `${ourPay}/${ptyPay}`,
+    exact: summary.matched,
+    fuzzy: summary.fuzzyMatched || 0,
+    tds: summary.tdsFlagged,
+    missParty: summary.missingInParty,
+    missOurs: summary.missingInOurs,
+    matchRate: matchRate.toFixed(1),
+    coverage: coverage.toFixed(1),
+    deltaExact,
+    deltaCoverage
+  })
 }
 
-console.log('\n--- SUMMARY ---')
-console.log(`Datasets Processed: ${totalProcessed}`)
-console.log(`Total Matched Invoices: ${totalMatched}`)
-console.log(`Total TDS Detections: ${totalTDS}`)
-console.log(`Total Amount Mismatches: ${totalMismatch}`)
+// Rank datasets by improvement (Delta Exact Matches desc)
+resultsList.sort((a, b) => b.deltaExact - a.deltaExact)
+
+for (const r of resultsList) {
+  const deltaExactStr = r.deltaExact > 0 ? `+${r.deltaExact}` : r.deltaExact.toString()
+  const deltaCovStr = r.deltaCoverage > 0 ? `+${r.deltaCoverage.toFixed(1)}%` : `${r.deltaCoverage.toFixed(1)}%`
+  report += `| ${r.name} | ${r.formatStr} | ${r.avgConf}% | ${r.recordsStr} | ${r.invStr} | ${r.payStr} | ${r.exact} | ${r.fuzzy} | ${r.tds} | ${r.missParty} | ${r.missOurs} | ${r.matchRate}% | ${r.coverage}% | **${deltaExactStr}** | **${deltaCovStr}** |\n`
+}
+
+fs.writeFileSync('C:\\Users\\SHERWIN\\.gemini\\antigravity\\brain\\1cd18666-b871-4fe7-82b0-123a533b9287\\reconciliation-regression-report.md', report)
+console.log('Regression report generated.')

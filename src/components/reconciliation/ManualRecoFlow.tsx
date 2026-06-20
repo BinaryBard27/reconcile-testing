@@ -230,7 +230,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
   }
 
   function onOurMappingComplete(mapping: any, entryTypeMap: any, mappingConfig: any) {
-    const norm = normalizeRows(ourRawRows, mapping, entryTypeMap, mappingConfig)
+    const norm = normalizeRows(ourRawRows, mapping, entryTypeMap, mappingConfig, ourFormat)
     const { openingBalanceRows, transactionRows } = separateOpeningBalance(norm)
     setOurNormalized(transactionRows)
     setOurOpeningBalance(openingBalanceRows)
@@ -240,7 +240,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
   }
 
   function onPartyMappingComplete(mapping: any, entryTypeMap: any, mappingConfig: any) {
-    const norm = normalizeRows(partyRawRows, mapping, entryTypeMap, mappingConfig)
+    const norm = normalizeRows(partyRawRows, mapping, entryTypeMap, mappingConfig, partyFormat)
     const { openingBalanceRows, transactionRows } = separateOpeningBalance(norm)
     setPartyNormalized(transactionRows)
     setPartyOpeningBalance(openingBalanceRows)
@@ -265,12 +265,12 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
     ourMapping: any, ourEntryTypeMap: any, ourMappingConfig: any,
     partyMapping: any, partyEntryTypeMap: any, partyMappingConfig: any
   ) {
-    const ourNorm = normalizeRows(ourRawRows, ourMapping, ourEntryTypeMap, ourMappingConfig)
+    const ourNorm = normalizeRows(ourRawRows, ourMapping, ourEntryTypeMap, ourMappingConfig, ourFormat)
     const { openingBalanceRows: ourOB, transactionRows: ourTrans } = separateOpeningBalance(ourNorm)
     setOurNormalized(ourTrans)
     setOurOpeningBalance(ourOB)
 
-    const partyNorm = normalizeRows(partyRawRows, partyMapping, partyEntryTypeMap, partyMappingConfig)
+    const partyNorm = normalizeRows(partyRawRows, partyMapping, partyEntryTypeMap, partyMappingConfig, partyFormat)
     const { openingBalanceRows: partyOB, transactionRows: partyTrans } = separateOpeningBalance(partyNorm)
     setPartyNormalized(partyTrans)
     setPartyOpeningBalance(partyOB)
