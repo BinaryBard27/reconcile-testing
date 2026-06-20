@@ -164,12 +164,12 @@ export default function LedgerMatchMVP() {
 
   const ledgerRows = useMemo(() => {
     if (!ledgerInfo) return []
-    return normalizeRows(ledgerInfo.rows, ledgerMap, { amountMode: ledgerAmountMode }, ledgerInfo.format)
+    return normalizeRows(ledgerInfo.rows, ledgerMap, { amountMode: ledgerAmountMode })
   }, [ledgerInfo, ledgerMap, ledgerAmountMode])
 
   const statementRows = useMemo(() => {
     if (!statementInfo) return []
-    return normalizeRows(statementInfo.rows, statementMap, { amountMode: statementAmountMode }, statementInfo.format)
+    return normalizeRows(statementInfo.rows, statementMap, { amountMode: statementAmountMode })
   }, [statementInfo, statementMap, statementAmountMode])
 
   const filteredResults = useMemo(() => {

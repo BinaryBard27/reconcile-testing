@@ -87,7 +87,7 @@ export default function DataConversionFlow({ onBack }: { onBack: () => void }) {
   }
 
   function handleMappingComplete(mapping: any, entryTypeMap: any, mappingConfig: any) {
-    const normalized = normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig, format)
+    const normalized = normalizeRows(rawRows, mapping, entryTypeMap, mappingConfig, detectedFormat)
     
     const stdRows = normalized.map((r: any) => ({
       'Reference No': r.rawRefNo || r.refNo || '',
