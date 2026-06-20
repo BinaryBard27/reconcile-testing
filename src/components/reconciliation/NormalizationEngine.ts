@@ -225,4 +225,4 @@ function runSelfTest() {
   console.log(parseDate('31/03/2025')) // Tally format
   console.log(parseDate('2025-03-31')) // Clean ISO
 }
-if (import.meta.env.DEV) runSelfTest()
+if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.DEV) runSelfTest()

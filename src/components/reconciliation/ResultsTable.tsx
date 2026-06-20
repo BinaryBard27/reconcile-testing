@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { MATCH_STATUS, STATUS_COLORS } from './constants'
 
 const TABS = [
@@ -27,7 +27,7 @@ function currencySymbol(code: string): string {
 function fmtDate(d: any) {
   if (!d) return ''
   try {
-    return d.toLocaleDateString('en-IN')
+    return new Date(d).toLocaleDateString('en-IN')
   } catch {
     return ''
   }
@@ -158,6 +158,16 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
   const [sortKey, setSortKey] = useState('refNo')
   const [sortDir, setSortDir] = useState('asc')
   const [remarksByRef, setRemarksByRef] = useState(() => ({}))
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+
+  function toggleRow(key: string) {
+    setExpandedRows(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
   
   const [actionStatuses, setActionStatuses] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {}
@@ -294,40 +304,92 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
                 </tr>
               )}
               {viewRows.map((r, idx) => (
-                <tr key={`${r.refNo}-${r.status}-${idx}`}>
-                  <td style={{ fontWeight: 700 }}>{r.rawRefNo || r.refNo}</td>
-                  <td>{fmtDate(r.ourDate) || '\u2014'}</td>
-                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.ourAmount ? `${currencySymbol(r.ourCurrency || 'INR')} ${fmtMoney(r.ourAmount)}` : '\u2014'}</td>
-                  <td>{fmtDate(r.partyDate) || '\u2014'}</td>
-                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.partyAmount ? `${currencySymbol(r.partyCurrency || 'INR')} ${fmtMoney(r.partyAmount)}` : '\u2014'}</td>
-                  <td style={{ fontVariantNumeric: 'tabular-nums', color: (Number(r.difference) || 0) !== 0 ? 'var(--red)' : 'var(--green)' }}>{fmtMoney(r.difference) || '\u2014'}</td>
-                  <td>{statusBadge(r.status)}</td>
-                  <td style={{ minWidth: 180 }}>
-                    <select
-                      value={actionStatuses[r.rowKey] || 'Open'}
-                      onChange={(e) => setActionStatuses((m) => ({ ...m, [r.rowKey]: e.target.value }))}
-                      style={{ width: '100%', padding: '4px' }}
-                    >
-                      <option value="Open">Open</option>
-                      <option value="TDS to be Booked">TDS to be Booked</option>
-                      <option value="Credit Note to be Passed">Credit Note to be Passed</option>
-                      <option value="Invoice Not Received by Party">Invoice Not Received by Party</option>
-                      <option value="Under Dispute">Under Dispute</option>
-                      <option value="To be Followed Up">To be Followed Up</option>
-                      <option value="Accepted Difference">Accepted Difference</option>
-                      <option value="Resolved">Resolved</option>
-                    </select>
-                  </td>
-                  <td style={{ minWidth: 220 }}>
-                    <input
-                      type="text"
-                      value={remarksByRef[r.refNo] ?? r.remarks ?? ''}
-                      onChange={(e) => setRemarksByRef((m) => ({ ...m, [r.refNo]: e.target.value }))}
-                      placeholder="Add remark..."
-                      style={{ width: '100%' }}
-                    />
-                  </td>
-                </tr>
+                <Fragment key={`${r.rowKey}-${idx}`}>
+                  <tr>
+                    <td style={{ textAlign: 'center' }}>
+                      <button 
+                        type="button" 
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', opacity: 0.6 }}
+                        onClick={() => toggleRow(r.rowKey)}
+                      >
+                        {expandedRows.has(r.rowKey) ? '▼' : '▶'}
+                      </button>
+                    </td>
+                    <td style={{ fontWeight: 700 }}>{r.rawRefNo || r.refNo}</td>
+                    <td>{fmtDate(r.ourDate) || '\u2014'}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.ourAmount ? `${currencySymbol(r.ourCurrency || 'INR')} ${fmtMoney(r.ourAmount)}` : '\u2014'}</td>
+                    <td>{fmtDate(r.partyDate) || '\u2014'}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.partyAmount ? `${currencySymbol(r.partyCurrency || 'INR')} ${fmtMoney(r.partyAmount)}` : '\u2014'}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums', color: (Number(r.difference) || 0) !== 0 ? 'var(--red)' : 'var(--green)' }}>{fmtMoney(r.difference) || '\u2014'}</td>
+                    <td>{statusBadge(r.status)}</td>
+                    <td style={{ minWidth: 180 }}>
+                      <select
+                        value={actionStatuses[r.rowKey] || 'Open'}
+                        onChange={(e) => setActionStatuses((m) => ({ ...m, [r.rowKey]: e.target.value }))}
+                        style={{ width: '100%', padding: '4px' }}
+                      >
+                        <option value="Open">Open</option>
+                        <option value="TDS to be Booked">TDS to be Booked</option>
+                        <option value="Credit Note to be Passed">Credit Note to be Passed</option>
+                        <option value="Invoice Not Received by Party">Invoice Not Received by Party</option>
+                        <option value="Under Dispute">Under Dispute</option>
+                        <option value="To be Followed Up">To be Followed Up</option>
+                        <option value="Accepted Difference">Accepted Difference</option>
+                        <option value="Resolved">Resolved</option>
+                      </select>
+                    </td>
+                    <td style={{ minWidth: 220 }}>
+                      <input
+                        type="text"
+                        value={remarksByRef[r.refNo] ?? r.remarks ?? ''}
+                        onChange={(e) => setRemarksByRef((m) => ({ ...m, [r.refNo]: e.target.value }))}
+                        placeholder="Add remark..."
+                        style={{ width: '100%' }}
+                      />
+                    </td>
+                  </tr>
+                  {expandedRows.has(r.rowKey) && (
+                    <tr style={{ background: 'var(--bg-elevated)', borderTop: '1px solid var(--border-light)' }}>
+                      <td colSpan={10} style={{ padding: '16px 24px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, fontSize: '0.85rem' }}>
+                          <div>
+                            <h4 style={{ margin: '0 0 8px', color: 'var(--text-h)' }}>Our Books (SAP)</h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 4 }}>
+                              <span style={{ color: 'var(--text-muted)' }}>Raw Ref:</span> <span>{r.rawRefNo || 'N/A'}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>Normalized Ref:</span> <span>{r.refNo || 'N/A'}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>Date:</span> <span>{fmtDate(r.ourDate) || 'N/A'}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>Amount:</span> <span>{r.ourAmount || 'N/A'} {r.ourCurrency}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>Narration:</span> <span>{r.ourNarration || 'N/A'}</span>
+                            </div>
+                          </div>
+                          <div>
+                            <h4 style={{ margin: '0 0 8px', color: 'var(--text-h)' }}>Party Ledger</h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 4 }}>
+                              <span style={{ color: 'var(--text-muted)' }}>Date:</span> <span>{fmtDate(r.partyDate) || 'N/A'}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>Amount:</span> <span>{r.partyAmount || 'N/A'} {r.partyCurrency}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>Narration:</span> <span>{r.partyNarration || 'N/A'}</span>
+                            </div>
+                          </div>
+                          <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border-light)', paddingTop: 12, marginTop: 4 }}>
+                            <h4 style={{ margin: '0 0 8px', color: 'var(--text-h)' }}>Match Audit</h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 4 }}>
+                              <span style={{ color: 'var(--text-muted)' }}>Match Strategy:</span> 
+                              <span style={{ fontWeight: 600 }}>{r.matchType === 'exact' ? 'Exact Reference' : r.matchType === 'fuzzy' ? 'Fuzzy Match' : r.matchType === 'amount_date' ? 'Amount + Date Match' : 'Unmatched'}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>Match Key:</span> <span>{r.refNo || 'N/A'}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>Classification:</span> <span>{r.status}</span>
+                              {r.tdsSection && (
+                                <>
+                                  <span style={{ color: 'var(--text-muted)' }}>TDS Detected:</span> 
+                                  <span>{r.tdsSection} @ {(r.tdsRate * 100).toFixed(2)}% (Expected: {r.expectedTDS})</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
             <tfoot>
