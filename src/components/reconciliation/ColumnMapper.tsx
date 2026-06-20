@@ -102,7 +102,13 @@ export default function ColumnMapper({
     if (!headers || headers.length === 0) return
 
     const cached = loadMapping(partyName, fileLabel, headers)
-    if (cached) {
+    if (cached && 
+        cached.mapping?.refNo?.toLowerCase().includes('document number') &&
+        headers.some((h: string) => h.toLowerCase().trim() === 'reference')) {
+      // Cached mapping has wrong refNo for this SAP file
+      // Ignore cache, run fresh auto-detect
+      setLoadedFromCache(false)
+    } else if (cached) {
       setMapping(cached.mapping || {})
       setEntryTypeMap(cached.entryTypeMap || {})
       setAmountLogic(cached.mappingConfig?.amountLogic === 'doctype' ? 'doctype' : 'separate')

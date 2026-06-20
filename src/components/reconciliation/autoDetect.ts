@@ -300,10 +300,21 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
 
   // SAP-specific overrides: fix order of preference for several fields
   if (format === 'SAP') {
-    const sapRef = headers.find(h => headerKey(h) === 'reference')
-    suggestion.refNo = sapRef || 
-      headers.find(h => headerKey(h).includes('ref no')) || 
-      findHeader(['reference', 'ref'])
+    // For SAP: always prefer the standalone 'Reference' column
+    // Never use 'Document Number' as the reference key
+    const sapRefCol = headers.find(h => {
+      const hk = h.toLowerCase().replace(/\s+/g, ' ').trim()
+      return hk === 'reference'  // exact match only
+    })
+
+    suggestion.refNo = sapRefCol || ''
+
+    // Safety check: if 'Document Number' was selected, override it
+    if (suggestion.refNo.toLowerCase().includes('document number')) {
+      suggestion.refNo = sapRefCol || ''
+    }
+
+    console.log('SAP refNo detected:', suggestion.refNo)
 
     // Date: prefer 'document date' over 'posting date' to avoid picking 'Posting Date' first
     suggestion.date =
