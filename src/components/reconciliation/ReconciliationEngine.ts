@@ -282,6 +282,30 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
     }
   })
 
+  // --- DEBUGGING OUTPUT ---
+  console.log('--- RECONCILIATION DEBUG INFO ---')
+  console.log('1. First 20 Normalized Our Records (SAP):', ourInvoices.slice(0, 20))
+  console.log('2. First 20 Normalized Party Records (Customer):', partyInvoices.slice(0, 20))
+  
+  const ourKeys = ourInvoices.map(r => r.refNo)
+  const partyKeys = partyInvoices.map(r => r.refNo)
+  console.log('3. Exact matching keys being compared:')
+  console.log('   Our keys:', ourKeys.slice(0, 50), '...')
+  console.log('   Party keys:', partyKeys.slice(0, 50), '...')
+
+  const exactMatchesCount = results.filter(r => r.matchType === 'exact').length
+  console.log('4. Number of exact matches found:', exactMatchesCount)
+
+  const fuzzyMatchesCount = results.filter(r => r.matchType === 'fuzzy').length
+  console.log('5. Number of fuzzy matches found:', fuzzyMatchesCount)
+
+  console.log('6. Reasons records are classified as unmatched:')
+  const unmatchedReasons = results
+    .filter(r => r.matchType === 'missing')
+    .map(r => `Ref: ${r.refNo} | Status: ${r.status} | OurAmt: ${r.ourAmount} | PartyAmt: ${r.partyAmount}`)
+  console.log(unmatchedReasons)
+  console.log('-----------------------------------')
+
   return results
 }
 
