@@ -1,11 +1,13 @@
 import { Fragment, useMemo, useState } from 'react'
 import { MATCH_STATUS, STATUS_COLORS } from './constants'
+import { classifyDifference } from './ReconciliationEngine'
 
 const TABS = [
   { key: 'ALL', label: 'All' },
   { key: 'MATCHED', label: 'Matched' },
   { key: 'MISMATCH', label: 'Mismatches' },
   { key: 'TDS', label: 'TDS Deductions' },
+  { key: 'FX', label: 'FX Differences' },
   { key: 'MISSING', label: 'Missing' },
   { key: 'POSSIBLE', label: 'Possible Matches' },
   { key: 'DUPLICATES', label: 'Duplicates' },
@@ -133,6 +135,7 @@ function applyTabFilter(row, tabKey) {
   if (tabKey === 'MATCHED') return row.status === MATCH_STATUS.MATCHED
   if (tabKey === 'MISMATCH') return String(row.status).includes('Mismatch')
   if (tabKey === 'TDS') return String(row.status).startsWith('TDS')
+  if (tabKey === 'FX') return row.classification === 'FX_ONLY' || row.classification === 'TDS_AND_FX'
   if (tabKey === 'MISSING')
     return row.status === MATCH_STATUS.MISSING_IN_PARTY || row.status === MATCH_STATUS.MISSING_IN_OURS
   if (tabKey === 'POSSIBLE')
@@ -159,6 +162,11 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
   const [sortDir, setSortDir] = useState('asc')
   const [remarksByRef, setRemarksByRef] = useState(() => ({}))
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+
+  const [manualMode, setManualMode] = useState(false)
+  const [manualOurRef, setManualOurRef] = useState<string | null>(null)
+  const [manualPartyRef, setManualPartyRef] = useState<string | null>(null)
+  const [renderTick, setRenderTick] = useState(0)
 
   function toggleRow(key: string) {
     setExpandedRows(prev => {
@@ -211,7 +219,7 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
 
     const sorted = [...filtered].sort((ra, rb) => compare(ra[sortKey], rb[sortKey], sortDir))
     return sorted
-  }, [results, tab, query, sortKey, sortDir, remarksByRef, actionStatuses])
+  }, [results, tab, query, sortKey, sortDir, remarksByRef, actionStatuses, renderTick])
 
   function toggleSort(key) {
     if (sortKey === key) {
@@ -264,7 +272,107 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
             {t.label}
           </button>
         ))}
+        <button
+          type="button"
+          className="btn btn-sm btn-secondary"
+          onClick={() => setManualMode(!manualMode)}
+          style={{ marginLeft: 'auto', background: 'var(--indigo-600)', color: 'white' }}
+        >
+          ⚡ Manually Match Rows
+        </button>
       </div>
+
+      {manualMode && (
+        <div className="card" style={{ marginBottom: 24, border: '1px solid var(--indigo-500)' }}>
+          <h3 style={{ marginTop: 0, marginBottom: 16 }}>Manual Reconciliation Mode</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+            <div>
+              <h4 style={{ marginBottom: 8 }}>Unmatched — Our Books</h4>
+              <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: 4 }}>
+                {(results ?? []).filter((r: any) => r.status === MATCH_STATUS.MISSING_IN_PARTY).map((r: any) => (
+                  <div 
+                    key={r.refNo}
+                    onClick={() => setManualOurRef(r.refNo)}
+                    style={{ 
+                      padding: 8, 
+                      cursor: 'pointer', 
+                      borderBottom: '1px solid var(--border-light)',
+                      background: manualOurRef === r.refNo ? 'var(--indigo-500)' : 'transparent',
+                      color: manualOurRef === r.refNo ? 'white' : 'inherit'
+                    }}
+                  >
+                    <strong>{r.refNo}</strong> | {fmtMoney(r.ourAmount)} | {fmtDate(r.ourDate)}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h4 style={{ marginBottom: 8 }}>Unmatched — Party Books</h4>
+              <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: 4 }}>
+                {(results ?? []).filter((r: any) => r.status === MATCH_STATUS.MISSING_IN_OURS).map((r: any) => (
+                  <div 
+                    key={r.refNo}
+                    onClick={() => setManualPartyRef(r.refNo)}
+                    style={{ 
+                      padding: 8, 
+                      cursor: 'pointer', 
+                      borderBottom: '1px solid var(--border-light)',
+                      background: manualPartyRef === r.refNo ? 'var(--indigo-500)' : 'transparent',
+                      color: manualPartyRef === r.refNo ? 'white' : 'inherit'
+                    }}
+                  >
+                    <strong>{r.refNo}</strong> | {fmtMoney(r.partyAmount)} | {fmtDate(r.partyDate)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
+            <button 
+              className="btn btn-primary"
+              disabled={!manualOurRef || !manualPartyRef}
+              onClick={() => {
+                const ourIdx = results.findIndex((r: any) => r.refNo === manualOurRef && r.matchType === 'missing');
+                const partyIdx = results.findIndex((r: any) => r.refNo === manualPartyRef && r.matchType === 'missing');
+                if (ourIdx >= 0 && partyIdx >= 0) {
+                  const ourRow = results[ourIdx];
+                  const partyRow = results[partyIdx];
+                  const ourAmt = Math.abs(ourRow.ourAmount);
+                  const partyAmt = Math.abs(partyRow.partyAmount);
+                  const analysis = classifyDifference(ourAmt, partyAmt, ourRow.ourNarration, partyRow.partyNarration, ourRow.ourAmountUSD);
+                  
+                  ourRow.partyDate = partyRow.partyDate;
+                  ourRow.partyAmount = partyRow.partyAmount;
+                  ourRow.partyCurrency = partyRow.partyCurrency;
+                  ourRow.partyNarration = partyRow.partyNarration;
+                  ourRow.difference = ourAmt - partyAmt;
+                  ourRow.status = 'Manually Matched';
+                  ourRow.matchType = 'manual';
+                  ourRow.remarks = 'Manually matched by user';
+                  ourRow.tdsSection = analysis.tdsSection;
+                  ourRow.tdsRate = analysis.tdsRate;
+                  ourRow.tdsAmount = analysis.tdsAmount;
+                  ourRow.fxAmount = analysis.fxAmount;
+                  ourRow.diffPct = analysis.diffPct;
+                  ourRow.classification = analysis.classification;
+                  
+                  results.splice(partyIdx, 1);
+                  setManualOurRef(null);
+                  setManualPartyRef(null);
+                  setRenderTick(t => t + 1);
+                }
+              }}
+            >
+              Match Selected
+            </button>
+            <button className="btn btn-secondary" onClick={() => {
+              setManualMode(false);
+              setManualOurRef(null);
+              setManualPartyRef(null);
+            }}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       <div className="filters-bar">
         <input
@@ -290,6 +398,8 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
                 <th role="button" onClick={() => toggleSort('partyDate')}>Party Date</th>
                 <th role="button" onClick={() => toggleSort('partyAmount')}>Party Amount</th>
                 <th role="button" onClick={() => toggleSort('difference')}>Difference</th>
+                <th role="button" onClick={() => toggleSort('diffPct')}>Diff %</th>
+                <th role="button" onClick={() => toggleSort('fxAmount')}>FX Amount</th>
                 <th role="button" onClick={() => toggleSort('status')}>Status</th>
                 <th role="button" onClick={() => toggleSort('actionStatus')}>Action Status</th>
                 <th>Remarks</th>
@@ -321,6 +431,8 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
                     <td>{fmtDate(r.partyDate) || '\u2014'}</td>
                     <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.partyAmount ? `${currencySymbol(r.partyCurrency || 'INR')} ${fmtMoney(r.partyAmount)}` : '\u2014'}</td>
                     <td style={{ fontVariantNumeric: 'tabular-nums', color: (Number(r.difference) || 0) !== 0 ? 'var(--red)' : 'var(--green)' }}>{fmtMoney(r.difference) || '\u2014'}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.diffPct ? r.diffPct.toFixed(2) + '%' : '\u2014'}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(r.fxAmount) || '\u2014'}</td>
                     <td>{statusBadge(r.status)}</td>
                     <td style={{ minWidth: 180 }}>
                       <select

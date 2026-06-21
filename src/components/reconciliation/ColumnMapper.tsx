@@ -10,6 +10,7 @@ const FIELD_DEFS = [
   { key: 'amountINR', label: 'Amount (Single Column)', required: false },
   { key: 'debitAmount', label: 'Debit Amount', required: false },
   { key: 'creditAmount', label: 'Credit Amount', required: false },
+  { key: 'amountUSD', label: 'Amount in USD (Optional)', required: false },
   { key: 'narration', label: 'Narration / Description', required: false },
   { key: 'utr', label: 'Bank UTR / Payment Ref', required: false },
 ]
@@ -84,10 +85,12 @@ export default function ColumnMapper({
   setRecoDate = undefined,
   currency = 'INR',
   setCurrency = undefined,
+  exchangeRate = undefined,
+  setExchangeRate = undefined,
 }: any) {
   const [mapping, setMapping] = useState(() => ({
     refNo: '', entryType: '', date: '', amountINR: '',
-    debitAmount: '', creditAmount: '', narration: '', utr: ''
+    debitAmount: '', creditAmount: '', amountUSD: '', narration: '', utr: ''
   }))
 
   const [amountLogic, setAmountLogic] = useState<'separate' | 'doctype'>('separate')
@@ -127,6 +130,7 @@ export default function ColumnMapper({
       amountINR: suggestion.amountINR || '',
       debitAmount: suggestion.debitAmount || '',
       creditAmount: suggestion.creditAmount || '',
+      amountUSD: suggestion.amountUSD || '',
       narration: suggestion.narration || '',
       utr: suggestion.utr || ''
     }))
@@ -201,6 +205,7 @@ export default function ColumnMapper({
       amountINR: suggestion.amountINR || '',
       debitAmount: suggestion.debitAmount || '',
       creditAmount: suggestion.creditAmount || '',
+      amountUSD: suggestion.amountUSD || '',
       narration: suggestion.narration || '',
       utr: suggestion.utr || ''
     })
@@ -308,6 +313,17 @@ export default function ColumnMapper({
                 <span style={{ color: 'var(--red)', fontSize: '0.82rem', marginTop: 4 }}>{partyNameError}</span>
               )}
             </label>
+            {mapping.amountUSD && (
+              <label className="mapper-field">
+                <span>Exchange Rate (USD to INR)</span>
+                <input
+                  type="number"
+                  placeholder="e.g. 86.64"
+                  value={exchangeRate || ''}
+                  onChange={(e) => setExchangeRate?.(parseFloat(e.target.value))}
+                />
+              </label>
+            )}
           </div>
         </div>
       )}

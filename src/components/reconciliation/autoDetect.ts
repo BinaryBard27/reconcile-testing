@@ -289,10 +289,10 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
 
   // Format specific overrides
   if (format === 'SAP') {
-    const exactRef = headers.find(h => headerKey(h) === 'reference')
-    if (exactRef && columnAnalysis[exactRef].nonEmptyCount > 0) {
-      suggestion.refNo = exactRef
-    }
+    const sapRefExact = headers.find(h => 
+      h.toLowerCase().replace(/\s+/g,'') === 'reference'
+    )
+    suggestion.refNo = sapRefExact || ''
     const docCurrencyValue = headers.find(h => headerKey(h) === 'document currency value' || headerKey(h) === 'amount in doc. curr.')
     if (docCurrencyValue) {
       suggestion.amountUSD = docCurrencyValue

@@ -79,8 +79,12 @@ export function exportReconciliation(
     'Party Amount',
     'Party Narration',
     'Difference',
+    'Diff %',
     'TDS Section',
+    'TDS Rate',
     'TDS Amount',
+    'FX Amount',
+    'Classification',
     'Match Status',
     'Action Status',
     'Remarks',
@@ -97,8 +101,12 @@ export function exportReconciliation(
       r.partyAmount || '',
       r.partyNarration,
       r.difference,
+      r.diffPct ? r.diffPct.toFixed(2) + '%' : '',
       r.tdsSection || '',
-      r.actualDeduction || '',
+      r.tdsRate ? (r.tdsRate * 100).toFixed(2) + '%' : '',
+      r.tdsAmount || r.actualDeduction || '',
+      r.fxAmount || '',
+      r.classification || '',
       r.status,
       (actionStatuses || {})[key] || 'Open',
       (remarks || {})[r.refNo] || r.remarks || '',
@@ -112,34 +120,38 @@ export function exportReconciliation(
   // -----------------------------------------------------
   const tdsHeaders = [
     'Reference No',
-    'Invoice Amount',
-    'Narration',
+    'Our Amount',
+    'Party Amount',
+    'Total Diff',
+    'Diff %',
     'TDS Section',
     'TDS Rate %',
-    'Expected TDS',
-    'Actual Deduction',
-    'Difference',
+    'TDS Amount',
+    'FX Amount',
+    'Classification',
     'Status'
   ]
   
-  const tdsResults = (results ?? []).filter(r => String(r.status).startsWith('TDS'))
+  const tdsResults = (results ?? []).filter(r => String(r.status).startsWith('TDS') || r.classification === 'TDS_ONLY' || r.classification === 'TDS_AND_FX')
   const tdsRows = tdsResults.map(r => [
     r.rawRefNo || r.refNo,
     r.ourAmount,
-    r.ourNarration,
+    r.partyAmount || '',
+    r.difference || '',
+    r.diffPct ? r.diffPct.toFixed(2) + '%' : '',
     r.tdsSection || '',
     r.tdsRate ? (r.tdsRate * 100).toFixed(2) + '%' : '',
-    r.expectedTDS || '',
-    r.actualDeduction || '',
-    (r.expectedTDS || 0) - (r.actualDeduction || 0),
+    r.tdsAmount || r.actualDeduction || '',
+    r.fxAmount || '',
+    r.classification || '',
     r.status
   ])
   
   // Footer row for TDS
-  const totalExpTDS = tdsResults.reduce((s, r) => s + (r.expectedTDS || 0), 0)
-  const totalActTDS = tdsResults.reduce((s, r) => s + (r.actualDeduction || 0), 0)
+  const totalActTDS = tdsResults.reduce((s, r) => s + (r.tdsAmount || r.actualDeduction || 0), 0)
+  const totalFX = tdsResults.reduce((s, r) => s + (r.fxAmount || 0), 0)
   tdsRows.push([
-    'TOTAL', '', '', '', '', totalExpTDS, totalActTDS, totalExpTDS - totalActTDS, ''
+    'TOTAL', '', '', '', '', '', '', totalActTDS, totalFX, '', ''
   ])
 
   // Explicit TDS Entries Booked
@@ -157,6 +169,31 @@ export function exportReconciliation(
 
   const ws3 = XLSX.utils.aoa_to_sheet([tdsHeaders, ...tdsRows])
   XLSX.utils.book_append_sheet(wb, ws3, 'TDS Register')
+
+  // -----------------------------------------------------
+  // SHEET 4a: FX Differences
+  // -----------------------------------------------------
+  const fxHeaders = [
+    'Reference No',
+    'Our Amount',
+    'Party Amount',
+    'TDS Amount',
+    'FX Amount',
+    'Narration'
+  ]
+  
+  const fxResults = (results ?? []).filter(r => r.classification === 'FX_ONLY' || r.classification === 'TDS_AND_FX')
+  const fxRows = fxResults.map(r => [
+    r.rawRefNo || r.refNo,
+    r.ourAmount,
+    r.partyAmount || '',
+    r.tdsAmount || '',
+    r.fxAmount || '',
+    r.ourNarration || r.partyNarration || ''
+  ])
+  
+  const wsFX = XLSX.utils.aoa_to_sheet([fxHeaders, ...fxRows])
+  XLSX.utils.book_append_sheet(wb, wsFX, 'FX Differences')
 
   // -----------------------------------------------------
   // SHEET 4: Payment Reconciliation
@@ -236,7 +273,7 @@ export function exportReconciliation(
   XLSX.utils.book_append_sheet(wb, ws5, 'Data Quality')
 
   // Formatting all sheets
-  const sheets = [ws1, ws2, ws3, ws4, ws5]
+  const sheets = [ws1, ws2, ws3, wsFX, ws4, ws5]
   sheets.forEach(ws => {
     // Basic auto-sizing
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')

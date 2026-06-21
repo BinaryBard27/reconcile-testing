@@ -30,63 +30,126 @@ const TDS_SECTIONS = [
   { section: '194Q', rate: 0.001, keywords: ['purchase of goods'] },
 ]
 
-export function detectTDS(ourAmount: number, partyAmount: number, narration: string): {
-  isTDS: boolean
+export interface TDSFXResult {
+  hasTDS: boolean
   tdsSection: string
   tdsRate: number
-  expectedTDS: number
-  actualDeduction: number
-} {
-  const diff = ourAmount - partyAmount
-  if (diff <= 0) return { isTDS: false, tdsSection: '', tdsRate: 0, expectedTDS: 0, actualDeduction: 0 }
+  tdsAmount: number
+  hasFX: boolean
+  fxAmount: number
+  totalDiff: number
+  diffPct: number
+  classification: 'TDS_ONLY' | 'FX_ONLY' | 'TDS_AND_FX' | 'MISMATCH' | 'NONE'
+}
 
-  const narr = (narration || '').toLowerCase()
+export function classifyDifference(
+  ourAmount: number,
+  partyAmount: number,
+  ourNarration: string,
+  partyNarration: string,
+  ourAmountUSD?: number,
+  exchangeRate?: number
+): TDSFXResult {
   
-  // Try to detect section from narration keywords
-  let detectedSection = TDS_SECTIONS[0] // default 194C
-  for (const sec of TDS_SECTIONS) {
-    if (sec.keywords.some(k => narr.includes(k))) {
-      detectedSection = sec
-      break
+  const totalDiff = ourAmount - partyAmount
+  if (Math.abs(totalDiff) < 0.5) {
+    return {
+      hasTDS: false, tdsSection: '', tdsRate: 0, tdsAmount: 0,
+      hasFX: false, fxAmount: 0, totalDiff: 0, diffPct: 0,
+      classification: 'NONE'
     }
   }
 
-  // Check all sections if narration match fails
-  for (const sec of TDS_SECTIONS) {
-    const expectedTDS = ourAmount * sec.rate
-    const tolerance = expectedTDS * 0.05 // 5% tolerance for rounding
-    if (Math.abs(diff - expectedTDS) <= tolerance) {
+  const diffPct = Math.abs(totalDiff) / ourAmount
+
+  // Narration for keyword matching
+  const narr = ((ourNarration || '') + ' ' + (partyNarration || '')).toLowerCase()
+  
+  let searchDiff = totalDiff
+  let fxFromRate = 0
+  
+  if (exchangeRate && ourAmountUSD && ourAmountUSD > 0) {
+    const ourINRAtCurrentRate = ourAmountUSD * exchangeRate
+    fxFromRate = Math.abs(ourAmount - ourINRAtCurrentRate)
+    searchDiff = (totalDiff > 0 ? 1 : -1) * (Math.abs(totalDiff) - fxFromRate)
+  }
+
+  // Try each TDS section
+  for (const section of TDS_SECTIONS) {
+    const expectedTDS = ourAmount * section.rate
+    const expectedTDSPct = section.rate
+    
+    // Check if narration matches this section's keywords
+    const narrationMatch = section.keywords.length === 0 || 
+      section.keywords.some(k => narr.includes(k))
+    
+    // Check if percentage difference matches TDS rate (within 0.5% tolerance)
+    const pctMatchesTDS = Math.abs(diffPct - expectedTDSPct) < 0.005
+
+    // Check if total diff ≈ expected TDS (within 5% of TDS amount)
+    const amountMatchesTDS = Math.abs(Math.abs(searchDiff) - expectedTDS) < expectedTDS * 0.05
+
+    if (pctMatchesTDS || amountMatchesTDS) {
+      const actualTDS = Math.min(Math.abs(totalDiff), expectedTDS)
+      const fxDiff = Math.abs(totalDiff) - actualTDS
+
+      // FX difference is small residual (< 2% of invoice)
+      let hasFX = Math.abs(fxDiff) > 0.5 && Math.abs(fxDiff) / ourAmount < 0.02
+      let finalFxAmount = hasFX ? Math.round(fxDiff * 100) / 100 : 0
+      
+      if (fxFromRate > 0) {
+        hasFX = true
+        finalFxAmount = Math.round(fxFromRate * 100) / 100
+      }
+
       return {
-        isTDS: true,
-        tdsSection: sec.section,
-        tdsRate: sec.rate,
-        expectedTDS: Math.round(expectedTDS * 100) / 100,
-        actualDeduction: Math.round(diff * 100) / 100
+        hasTDS: true,
+        tdsSection: section.section,
+        tdsRate: section.rate,
+        tdsAmount: Math.round(actualTDS * 100) / 100,
+        hasFX,
+        fxAmount: finalFxAmount,
+        totalDiff: Math.round(totalDiff * 100) / 100,
+        diffPct: Math.round(diffPct * 10000) / 100,
+        classification: hasFX ? 'TDS_AND_FX' : 'TDS_ONLY'
       }
     }
   }
 
-  // Check detected section even if not exact match (within 10%)
-  const expectedFromDetected = ourAmount * detectedSection.rate
-  if (Math.abs(diff - expectedFromDetected) <= expectedFromDetected * 0.10) {
+  // No TDS match found
+  // Check if it's FX difference (small %, < 3%)
+  if (diffPct < 0.03 || fxFromRate > 0) {
+    let finalFxAmount = Math.round(Math.abs(totalDiff) * 100) / 100
+    if (fxFromRate > 0 && Math.abs(searchDiff) < 0.5) {
+       finalFxAmount = Math.round(fxFromRate * 100) / 100
+    }
+
     return {
-      isTDS: true,
-      tdsSection: detectedSection.section + ' (approx)',
-      tdsRate: detectedSection.rate,
-      expectedTDS: Math.round(expectedFromDetected * 100) / 100,
-      actualDeduction: Math.round(diff * 100) / 100
+      hasTDS: false, tdsSection: '', tdsRate: 0, tdsAmount: 0,
+      hasFX: true,
+      fxAmount: finalFxAmount,
+      totalDiff: Math.round(totalDiff * 100) / 100,
+      diffPct: Math.round(diffPct * 10000) / 100,
+      classification: 'FX_ONLY'
     }
   }
 
-  return { isTDS: false, tdsSection: '', tdsRate: 0, expectedTDS: 0, actualDeduction: diff }
+  // Large unexplained difference
+  return {
+    hasTDS: false, tdsSection: '', tdsRate: 0, tdsAmount: 0,
+    hasFX: false, fxAmount: 0,
+    totalDiff: Math.round(totalDiff * 100) / 100,
+    diffPct: Math.round(diffPct * 10000) / 100,
+    classification: 'MISMATCH'
+  }
 }
 
-export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
+export function reconcileInvoices(ourRows: any[], partyRows: any[], exchangeRate?: number) {
   // Filter to invoices only
   const ourInvoices = (ourRows ?? []).filter((r) => r.entryType === 'invoice')
   const partyInvoices = (partyRows ?? []).filter((r) => r.entryType === 'invoice')
 
-  const results = []
+  const results: any[] = []
   const matchedPartyIndexes = new Set()
 
   // STEP 1: Exact ref match
@@ -122,27 +185,35 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
       const pctDiff = ourAmt > 0 ? Math.abs(diff) / ourAmt : 0
 
       let status
-      let tdsData = {}
+      let matchData = {}
 
       if (currencyMismatch) {
         status = 'Currency Mismatch — verify exchange rate'
-      } else if (Math.abs(diff) < 0.5 || pctDiff < 0.001) {
-        status = MATCH_STATUS.MATCHED
-      } else if (diff > 0) {
-        status = MATCH_STATUS.AMOUNT_MISMATCH_UNDER // party booked less
-        const combinedNarration = (ourRow.narration || '') + ' ' + (party.narration || '')
-        const tds = detectTDS(ourAmt, partyAmt, combinedNarration)
-        if (tds.isTDS) {
-          status = `TDS Deduction — ${tds.tdsSection}`
-          tdsData = {
-            tdsSection: tds.tdsSection,
-            tdsRate: tds.tdsRate,
-            expectedTDS: tds.expectedTDS,
-            actualDeduction: tds.actualDeduction
-          }
-        }
       } else {
-        status = MATCH_STATUS.AMOUNT_MISMATCH_OVER // party booked more
+        const analysis = classifyDifference(ourAmt, partyAmt, ourRow.narration, party.narration, ourRow.amountUSD, exchangeRate)
+
+        if (analysis.classification === 'NONE') {
+          status = MATCH_STATUS.MATCHED
+        } else if (analysis.classification === 'TDS_ONLY') {
+          status = `TDS Deduction — ${analysis.tdsSection}`
+        } else if (analysis.classification === 'TDS_AND_FX') {
+          status = `TDS + FX Difference — ${analysis.tdsSection}`
+        } else if (analysis.classification === 'FX_ONLY') {
+          status = 'FX Difference (Exchange Gain/Loss)'
+        } else {
+          status = diff > 0 
+            ? MATCH_STATUS.AMOUNT_MISMATCH_UNDER 
+            : MATCH_STATUS.AMOUNT_MISMATCH_OVER
+        }
+        
+        matchData = {
+          tdsSection: analysis.tdsSection,
+          tdsRate: analysis.tdsRate,
+          tdsAmount: analysis.tdsAmount,
+          fxAmount: analysis.fxAmount,
+          diffPct: analysis.diffPct,
+          classification: analysis.classification
+        }
       }
 
       results.push({
@@ -161,7 +232,7 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
         status,
         remarks: currencyMismatch ? `Our: ${ourCurrency}, Party: ${partyCurrency}` : '',
         matchType: 'exact',
-        ...tdsData,
+        ...matchData,
       })
     }
   })
@@ -199,6 +270,26 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
         if (amountClose) {
           matchedPartyIndexes.add(partyInvoices.indexOf(party))
 
+          let status = MATCH_STATUS.POSSIBLE_TYPO
+          let matchData = {}
+          const analysis = classifyDifference(ourAmt, partyAmt, ourRow.narration, party.narration, ourRow.amountUSD, exchangeRate)
+          
+          if (analysis.classification !== 'NONE') {
+            if (analysis.classification === 'TDS_ONLY') status = `TDS Deduction — ${analysis.tdsSection}`
+            else if (analysis.classification === 'TDS_AND_FX') status = `TDS + FX Difference — ${analysis.tdsSection}`
+            else if (analysis.classification === 'FX_ONLY') status = 'FX Difference (Exchange Gain/Loss)'
+            else status = MATCH_STATUS.POSSIBLE_TYPO // Keep possible typo if just mismatch
+            
+            matchData = {
+              tdsSection: analysis.tdsSection,
+              tdsRate: analysis.tdsRate,
+              tdsAmount: analysis.tdsAmount,
+              fxAmount: analysis.fxAmount,
+              diffPct: analysis.diffPct,
+              classification: analysis.classification
+            }
+          }
+
           results.push({
             refNo: ourRow.refNo,
             rawRefNo: ourRow.rawRefNo,
@@ -212,9 +303,10 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
             partyCurrency: party.detectedCurrency || 'INR',
             partyNarration: party.narration,
             difference: Math.abs(ourRow.amount) - Math.abs(party.amount),
-            status: MATCH_STATUS.POSSIBLE_TYPO,
+            status,
             remarks: `Party ref: ${party.rawRefNo}`,
             matchType: 'fuzzy',
+            ...matchData,
           })
         }
       }
@@ -250,6 +342,28 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
 
     if (amountDateMatch) {
       matchedPartyIndexes.add(partyInvoices.indexOf(amountDateMatch))
+      let status = MATCH_STATUS.MATCHED_BY_AMOUNT_DATE
+      let matchData = {}
+      let ourAmt = Math.abs(ourRow.amount)
+      let partyAmt = Math.abs(amountDateMatch.amount)
+      const analysis = classifyDifference(ourAmt, partyAmt, ourRow.narration, amountDateMatch.narration, ourRow.amountUSD, exchangeRate)
+      
+      if (analysis.classification !== 'NONE') {
+        if (analysis.classification === 'TDS_ONLY') status = `TDS Deduction — ${analysis.tdsSection}`
+        else if (analysis.classification === 'TDS_AND_FX') status = `TDS + FX Difference — ${analysis.tdsSection}`
+        else if (analysis.classification === 'FX_ONLY') status = 'FX Difference (Exchange Gain/Loss)'
+        else status = MATCH_STATUS.MATCHED_BY_AMOUNT_DATE
+        
+        matchData = {
+          tdsSection: analysis.tdsSection,
+          tdsRate: analysis.tdsRate,
+          tdsAmount: analysis.tdsAmount,
+          fxAmount: analysis.fxAmount,
+          diffPct: analysis.diffPct,
+          classification: analysis.classification
+        }
+      }
+      
       results.push({
         refNo: ourRow.refNo || '(no ref)',
         rawRefNo: ourRow.rawRefNo,
@@ -262,10 +376,11 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[]) {
         partyAmount: Math.abs(amountDateMatch.amount),
         partyCurrency: amountDateMatch.detectedCurrency || 'INR',
         partyNarration: amountDateMatch.narration,
-        difference: 0,
-        status: MATCH_STATUS.MATCHED_BY_AMOUNT_DATE,
+        difference: ourAmt - partyAmt,
+        status,
         remarks: `Our ref: ${ourRow.rawRefNo || 'none'} | Party ref: ${amountDateMatch.rawRefNo || 'none'}`,
         matchType: 'amount_date',
+        ...matchData,
       })
     } else {
       results.push({
@@ -387,7 +502,7 @@ export function buildDetailedSummary(
 
   const tdsFromMismatch = results
     .filter(r => String(r.status).startsWith('TDS Deduction'))
-    .reduce((s, r) => s + (r.actualDeduction || 0), 0)
+    .reduce((s, r) => s + (r.tdsAmount || 0), 0)
 
   const tdsToBeBooked = tdsFromMismatch + tdsExplicitGap
 

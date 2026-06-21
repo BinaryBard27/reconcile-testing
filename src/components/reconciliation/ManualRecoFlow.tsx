@@ -212,6 +212,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
   const [partyName, setPartyName] = useState('')
   const [recoDate, setRecoDate] = useState(todayISO())
   const [currency, setCurrency] = useState('INR')
+  const [exchangeRate, setExchangeRate] = useState<number | undefined>(undefined)
 
   const [editMappingOpen, setEditMappingOpen] = useState(false)
 
@@ -254,7 +255,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
     const partyDupMap = detectDuplicates(partyNormalized ?? [])
     const cleanOur = autoRemoveExportDuplicates(ourNormalized ?? [], ourDupMap)
     const cleanParty = autoRemoveExportDuplicates(partyNormalized ?? [], partyDupMap)
-    const res = reconcileInvoices(cleanOur, cleanParty)
+    const res = reconcileInvoices(cleanOur, cleanParty, exchangeRate)
     const sum = buildDetailedSummary(res, cleanOur, cleanParty, ourOpeningBalance, partyOpeningBalance)
     setResults(res)
     setSummary(sum)
@@ -277,7 +278,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
 
     const cleanOur = autoRemoveExportDuplicates(ourTrans, detectDuplicates(ourTrans))
     const cleanParty = autoRemoveExportDuplicates(partyTrans, detectDuplicates(partyTrans))
-    const res = reconcileInvoices(cleanOur, cleanParty)
+    const res = reconcileInvoices(cleanOur, cleanParty, exchangeRate)
     const sum = buildDetailedSummary(res, cleanOur, cleanParty, ourOB, partyOB)
     setResults(res)
     setSummary(sum)
@@ -330,6 +331,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
           partyName={partyName} setPartyName={setPartyName}
           recoDate={recoDate} setRecoDate={setRecoDate}
           currency={currency} setCurrency={setCurrency}
+          exchangeRate={exchangeRate} setExchangeRate={setExchangeRate}
         />
       )}
 

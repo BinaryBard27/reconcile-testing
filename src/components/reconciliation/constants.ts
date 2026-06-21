@@ -19,6 +19,9 @@ export const MATCH_STATUS = {
   DUPLICATE_CONFLICT: 'Duplicate Ref — Amount Conflict',
   TDS_DEDUCTION: 'TDS Deduction',
   TDS_MISMATCH: 'TDS Amount Mismatch',
+  TDS_AND_FX: 'TDS + FX Difference',
+  FX_ONLY: 'FX Difference (Exchange Gain/Loss)',
+  MANUALLY_MATCHED: 'Manually Matched',
 }
 
 export const STATUS_COLORS = {
@@ -33,5 +36,8 @@ export const STATUS_COLORS = {
   [MATCH_STATUS.DUPLICATE_CONFLICT]: '#ef4444',
   'TDS Deduction': '#8b5cf6',
   'TDS Amount Mismatch': '#f97316',
+  'TDS + FX Difference': '#7c3aed',
+  'FX Difference (Exchange Gain/Loss)': '#0891b2',
+  'Manually Matched': '#6366f1',
 }
 

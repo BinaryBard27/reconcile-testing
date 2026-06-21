@@ -28,7 +28,14 @@ export function loadMapping(partyName: string, fileLabel: string, currentHeaders
     if (!raw) return null
     const store = JSON.parse(raw)
     const key = cacheKey(fileLabel, currentHeaders)
-    return store[key] || null
+    const cached = store[key] || null
+    if (cached && cached.mapping && cached.mapping.refNo && cached.mapping.refNo.toLowerCase().includes('document')) {
+      const hasExactReference = currentHeaders.some(h => h.toLowerCase().replace(/\s+/g, '') === 'reference')
+      if (hasExactReference) {
+        return null
+      }
+    }
+    return cached
   } catch (e) {
     console.error('Failed to load mapping', e)
     return null
