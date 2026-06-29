@@ -22,6 +22,28 @@ function App() {
     localStorage.setItem('micro-theme', theme)
   }, [theme])
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('micro-ledger-mappings')
+      if (!raw) return
+      const store = JSON.parse(raw)
+      let changed = false
+      Object.keys(store).forEach(key => {
+        const entry = store[key]
+        const refNo = entry?.mapping?.refNo || ''
+        if (refNo.toLowerCase().includes('document') && 
+            refNo.toLowerCase().includes('number')) {
+          delete store[key]
+          changed = true
+        }
+      })
+      if (changed) {
+        localStorage.setItem('micro-ledger-mappings', JSON.stringify(store))
+        console.log('Cleared stale SAP mappings with wrong refNo')
+      }
+    } catch (e) {}
+  }, [])
+
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

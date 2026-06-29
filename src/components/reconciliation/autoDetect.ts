@@ -293,7 +293,10 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
       h.toLowerCase().replace(/\s+/g,'') === 'reference'
     )
     suggestion.refNo = sapRefExact || ''
-    const docCurrencyValue = headers.find(h => headerKey(h) === 'document currency value' || headerKey(h) === 'amount in doc. curr.')
+    const docCurrencyValue = headers.find(h => 
+      h.toLowerCase().replace(/\s+/g,'').includes('documentcurrencyvalue') ||
+      h.toLowerCase().replace(/\s+/g,'').includes('amountindoc')
+    )
     if (docCurrencyValue) {
       suggestion.amountUSD = docCurrencyValue
     }

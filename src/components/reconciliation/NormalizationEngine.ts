@@ -123,9 +123,6 @@ export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, m
         credit = normalizeAmount(row?.[mapping.creditAmount])
         
         const isAPStatement = String(format || '').toLowerCase().includes('ap statement')
-        if (row?.[mapping.refNo] === 246779410007 || row?.[mapping.refNo] === '246779410007') {
-          console.log(`[DEBUG] normalizeRows format='${format}', isAPStatement=${isAPStatement}, credit=${credit}, debit=${debit}`);
-        }
         // Infer entryType from separate columns if not explicitly mapped
         if (!mapping.entryType) {
           if (isAPStatement) {
@@ -167,12 +164,41 @@ export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, m
 
       if (entryType === 'ignore') return null
 
-      const amountUSD = mapping.amountUSD ? normalizeAmount(row?.[mapping.amountUSD]) : 0
+      // SAP fallback: if amountUSD not mapped but raw row has it
+      let amountUSD = 0
+      if (mapping.amountUSD) {
+        amountUSD = normalizeAmount(row?.[mapping.amountUSD])
+      } else {
+        // Try to find USD amount directly from raw row
+        const usdKeys = Object.keys(row || {}).filter(k => 
+          k.toLowerCase().replace(/\s+/g,'').includes('documentcurrencyvalue') ||
+          k.toLowerCase().replace(/\s+/g,'').includes('amountindoc')
+        )
+        if (usdKeys.length > 0) {
+          amountUSD = normalizeAmount(row?.[usdKeys[0]])
+        }
+      }
 
       // Determine detected currency for this row
       let detectedCurrency: 'INR' | 'USD' | 'EUR' = primaryCurrency
       if (hasUSDData && amountUSD > 0) {
         detectedCurrency = 'USD'
+      }
+
+      let narration = ''
+      if (mapping.narration) {
+        narration = row?.[mapping.narration] || ''
+      } else {
+        // SAP fallback: try 'Text' column directly
+        const textKeys = Object.keys(row || {}).filter(k =>
+          k.toLowerCase().trim() === 'text' ||
+          k.toLowerCase().trim() === 'narration' ||
+          k.toLowerCase().trim() === 'particulars' ||
+          k.toLowerCase().trim() === 'description'
+        )
+        if (textKeys.length > 0) {
+          narration = row?.[textKeys[0]] || ''
+        }
       }
 
       return {
@@ -185,7 +211,7 @@ export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, m
         amountINR: primaryCurrency === 'INR' ? amount : 0,
         amountUSD,
         detectedCurrency,
-        narration: row?.[mapping.narration] || '',
+        narration,
         utr: mapping.utr ? row?.[mapping.utr] || '' : '',
         clearedStatus: mapping.clearedStatus ? row?.[mapping.clearedStatus] || '' : '',
         rawRow: row,
