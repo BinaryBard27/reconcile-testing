@@ -167,19 +167,9 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], exchangeRate
 
       const ourCurrency = ourRow.detectedCurrency || 'INR'
       const partyCurrency = party.detectedCurrency || 'INR'
-      let currencyMismatch = ourCurrency !== partyCurrency
 
       let ourAmt = Math.abs(ourRow.amount)
       let partyAmt = Math.abs(party.amount)
-
-      // Cross-currency matching using USD if available
-      if (ourRow.amountUSD && partyCurrency === 'USD') {
-        ourAmt = Math.abs(ourRow.amountUSD)
-        currencyMismatch = false // Successfully resolved via USD amount
-      } else if (party.amountUSD && ourCurrency === 'USD') {
-        partyAmt = Math.abs(party.amountUSD)
-        currencyMismatch = false // Successfully resolved via USD amount
-      }
 
       const diff = ourAmt - partyAmt
       const pctDiff = ourAmt > 0 ? Math.abs(diff) / ourAmt : 0
@@ -187,33 +177,34 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], exchangeRate
       let status
       let matchData = {}
 
-      if (currencyMismatch) {
-        status = 'Currency Mismatch — verify exchange rate'
-      } else {
-        const analysis = classifyDifference(ourAmt, partyAmt, ourRow.narration, party.narration, ourRow.amountUSD, exchangeRate)
+      const analysis = classifyDifference(ourAmt, partyAmt, ourRow.narration, party.narration, ourRow.amountUSD, exchangeRate)
 
-        if (analysis.classification === 'NONE') {
-          status = MATCH_STATUS.MATCHED
-        } else if (analysis.classification === 'TDS_ONLY') {
-          status = `TDS Deduction — ${analysis.tdsSection}`
-        } else if (analysis.classification === 'TDS_AND_FX') {
-          status = `TDS + FX Difference — ${analysis.tdsSection}`
-        } else if (analysis.classification === 'FX_ONLY') {
-          status = 'FX Difference (Exchange Gain/Loss)'
-        } else {
-          status = diff > 0 
-            ? MATCH_STATUS.AMOUNT_MISMATCH_UNDER 
-            : MATCH_STATUS.AMOUNT_MISMATCH_OVER
-        }
-        
-        matchData = {
-          tdsSection: analysis.tdsSection,
-          tdsRate: analysis.tdsRate,
-          tdsAmount: analysis.tdsAmount,
-          fxAmount: analysis.fxAmount,
-          diffPct: analysis.diffPct,
-          classification: analysis.classification
-        }
+      if (analysis.classification === 'NONE') {
+        status = MATCH_STATUS.MATCHED
+      } else if (analysis.classification === 'TDS_ONLY') {
+        status = `TDS Deduction — ${analysis.tdsSection}`
+      } else if (analysis.classification === 'TDS_AND_FX') {
+        status = `TDS + FX Difference — ${analysis.tdsSection}`
+      } else if (analysis.classification === 'FX_ONLY') {
+        status = 'FX Difference (Exchange Gain/Loss)'
+      } else {
+        status = diff > 0 
+          ? MATCH_STATUS.AMOUNT_MISMATCH_UNDER 
+          : MATCH_STATUS.AMOUNT_MISMATCH_OVER
+      }
+      
+      matchData = {
+        tdsSection: analysis.tdsSection,
+        tdsRate: analysis.tdsRate,
+        tdsAmount: analysis.tdsAmount,
+        fxAmount: analysis.fxAmount,
+        diffPct: analysis.diffPct,
+        classification: analysis.classification
+      }
+
+      let remarks = ''
+      if (ourRow.amountUSD && ourRow.amountUSD > 0) {
+        remarks = `USD: $${ourRow.amountUSD}`
       }
 
       results.push({
@@ -228,9 +219,9 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], exchangeRate
         partyAmount: partyAmt,
         partyCurrency,
         partyNarration: party.narration,
-        difference: currencyMismatch ? 0 : diff,
+        difference: diff,
         status,
-        remarks: currencyMismatch ? `Our: ${ourCurrency}, Party: ${partyCurrency}` : '',
+        remarks,
         matchType: 'exact',
         ...matchData,
       })
@@ -259,11 +250,6 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], exchangeRate
         let partyAmt = Math.abs(party.amount)
         const ourCurrency = ourRow.detectedCurrency || 'INR'
         const partyCurrency = party.detectedCurrency || 'INR'
-        if (ourRow.amountUSD && partyCurrency === 'USD') {
-          ourAmt = Math.abs(ourRow.amountUSD)
-        } else if (party.amountUSD && ourCurrency === 'USD') {
-          partyAmt = Math.abs(party.amountUSD)
-        }
         
         const amountClose = Math.abs(ourAmt - partyAmt) / (ourAmt || 1) < 0.05 // within 5%
 
@@ -304,7 +290,7 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], exchangeRate
             partyNarration: party.narration,
             difference: Math.abs(ourRow.amount) - Math.abs(party.amount),
             status,
-            remarks: `Party ref: ${party.rawRefNo}`,
+            remarks: `Party ref: ${party.rawRefNo}${ourRow.amountUSD && ourRow.amountUSD > 0 ? ` | USD: $${ourRow.amountUSD}` : ''}`,
             matchType: 'fuzzy',
             ...matchData,
           })
@@ -326,12 +312,6 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], exchangeRate
       
       const ourCurrency = ourRow.detectedCurrency || 'INR'
       const partyCurrency = p.detectedCurrency || 'INR'
-      
-      if (ourRow.amountUSD && partyCurrency === 'USD') {
-        ourAmt = Math.abs(ourRow.amountUSD)
-      } else if (p.amountUSD && ourCurrency === 'USD') {
-        partyAmt = Math.abs(p.amountUSD)
-      }
 
       const amountClose = Math.abs(ourAmt - partyAmt) / (ourAmt || 1) < 0.01
       if (!amountClose) return false
@@ -378,7 +358,7 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], exchangeRate
         partyNarration: amountDateMatch.narration,
         difference: ourAmt - partyAmt,
         status,
-        remarks: `Our ref: ${ourRow.rawRefNo || 'none'} | Party ref: ${amountDateMatch.rawRefNo || 'none'}`,
+        remarks: `Our ref: ${ourRow.rawRefNo || 'none'} | Party ref: ${amountDateMatch.rawRefNo || 'none'}${ourRow.amountUSD && ourRow.amountUSD > 0 ? ` | USD: $${ourRow.amountUSD}` : ''}`,
         matchType: 'amount_date',
         ...matchData,
       })

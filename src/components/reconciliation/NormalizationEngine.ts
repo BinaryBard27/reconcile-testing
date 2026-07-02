@@ -201,6 +201,19 @@ export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, m
         }
       }
 
+      let utr = ''
+      if (mapping.utr) {
+        utr = row?.[mapping.utr] || ''
+      } else if (entryType === 'payment') {
+        const utrKeys = Object.keys(row || {}).filter(k =>
+          k.toLowerCase().replace(/\s+/g,'').includes('documentheadertext') ||
+          k.toLowerCase().replace(/\s+/g,'').includes('headertext')
+        )
+        if (utrKeys.length > 0) {
+          utr = row?.[utrKeys[0]] || ''
+        }
+      }
+
       return {
         originalIndex: idx,
         refNo: normalizeRef(row?.[mapping.refNo]),
@@ -212,7 +225,7 @@ export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, m
         amountUSD,
         detectedCurrency,
         narration,
-        utr: mapping.utr ? row?.[mapping.utr] || '' : '',
+        utr,
         clearedStatus: mapping.clearedStatus ? row?.[mapping.clearedStatus] || '' : '',
         rawRow: row,
       }

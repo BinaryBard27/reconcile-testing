@@ -37,7 +37,7 @@ function smartDefaultForValue(value: string, narrationSamples: string[]): string
   if (hasTDSInValue || hasTDSInNarration) return 'tds' // ENTRY_TYPES.TDS is 'tds'
   
   // Payment check
-  if (['dz', 'kz', 'payment', 'receipt', 'pay', 'bank', 'cash'].some(x => s.includes(x))) 
+  if (['dz', 'kz', 'payment', 'receipt', 'pay', 'bank', 'cash'].some(x => s.includes(x)) || s === 'cr') 
     return 'payment' // ENTRY_TYPES.PAYMENT
   
   // Invoice check  
@@ -139,7 +139,7 @@ export default function ColumnMapper({
 
   const uniqueEntryTypeValues = useMemo(() => {
     if (!mapping.entryType) return []
-    const vals = (rawRows ?? []).map((r: any) => r?.[mapping.entryType])
+    const vals = (rawRows ?? []).slice(0, 200).map((r: any) => r?.[mapping.entryType])
     return uniq(vals)
   }, [rawRows, mapping.entryType])
 
