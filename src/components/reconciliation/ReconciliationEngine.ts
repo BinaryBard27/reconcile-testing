@@ -1,499 +1,154 @@
 import Fuse from 'fuse.js'
 import { MATCH_STATUS } from './constants'
 
-const TDS_SECTIONS = [
-  {
-    section: '194C',
-    rate: 0.02,
-    keywords: ['contract', 'transport', 'freight', 'handling', 'scanning',
-               'logistics', 'lashing', 'stuffing', 'outbound', 'inbound',
-               'cartage', 'delivery charges', 'lcl', 'port ssr',
-               'transportation', 'ground rent'],
-  },
-  { section: '194C (Individual)', rate: 0.01, keywords: [] },
-  {
-    section: '194I',
-    rate: 0.10,
-    keywords: ['storage', 'warehouse', 'godown', 'space charges',
-               'facility charges', 'cold storage', 'yard charges',
-               'rental charges', 'fixed rental', 'unit storage',
-               'fixed storage'],
-  },
-  {
-    section: '194J',
-    rate: 0.10,
-    keywords: ['professional', 'technical', 'consultancy',
-               'management fee', 'advisory', 'software', 'vas',
-               'value added'],
-  },
-  { section: '194H', rate: 0.05, keywords: ['commission', 'brokerage', 'agency'] },
+const TDS_RATES = [
+  { section: '194C', rate: 0.02, keywords: ['contract', 'transport', 'freight', 'handling', 'outbound', 'inbound', 'lashing', 'stuffing', 'cartage', 'lcl', 'ground rent'] },
+  { section: '194I', rate: 0.10, keywords: ['storage', 'warehouse', 'godown', 'rental', 'fixed storage', 'unit storage', 'cold storage'] },
+  { section: '194J', rate: 0.10, keywords: ['professional', 'technical', 'consultancy', 'advisory', 'software', 'vas', 'value added'] },
+  { section: '194H', rate: 0.05, keywords: ['commission', 'brokerage'] },
   { section: '194Q', rate: 0.001, keywords: ['purchase of goods'] },
 ]
 
+const TIGHT_BAND = 0.003
+const WIDE_BAND = 0.01
+
 export interface TDSFXResult {
-  hasTDS: boolean
-  tdsSection: string
-  tdsRate: number
-  tdsAmount: number
-  hasFX: boolean
-  fxAmount: number
-  totalDiff: number
-  diffPct: number
+  tdsSection?: string
+  tdsRate?: number
+  tdsAmount?: number
+  fxAmount?: number
+  diffPct?: number
   classification: 'TDS_ONLY' | 'FX_ONLY' | 'TDS_AND_FX' | 'MISMATCH' | 'NONE'
 }
 
-export function classifyDifference(
-  ourAmount: number,
-  partyAmount: number,
-  ourNarration: string,
-  partyNarration: string,
-  ourAmountUSD?: number,
-  exchangeRate?: number
-): TDSFXResult {
-  
-  const totalDiff = ourAmount - partyAmount
-  if (Math.abs(totalDiff) < 0.5) {
-    return {
-      hasTDS: false, tdsSection: '', tdsRate: 0, tdsAmount: 0,
-      hasFX: false, fxAmount: 0, totalDiff: 0, diffPct: 0,
-      classification: 'NONE'
-    }
+export function classifyDifference(ourNet: number, partyNet: number, narration: string): TDSFXResult {
+  const diff = ourNet - partyNet
+  const diffPct = Math.abs(diff) / ourNet
+  if (Math.abs(diff) < 0.5) {
+    const result = { classification: 'NONE' as const }
+    console.log('[TDS/FX]', { ourNet, partyNet, diffPct, section: undefined, classification: result.classification })
+    return result
   }
 
-  const diffPct = Math.abs(totalDiff) / ourAmount
+  const narr = (narration || '').toLowerCase()
+  const candidates = TDS_RATES
+    .map(s => ({ ...s, distance: Math.abs(diffPct - s.rate) }))
+    .filter(s => s.distance <= WIDE_BAND)
+    .sort((a, b) => {
+      const aKw = a.keywords.some(k => narr.includes(k))
+      const bKw = b.keywords.some(k => narr.includes(k))
+      if (aKw && !bKw) return -1
+      if (bKw && !aKw) return 1
+      return a.distance - b.distance
+    })
 
-  // Narration for keyword matching
-  const narr = ((ourNarration || '') + ' ' + (partyNarration || '')).toLowerCase()
-  
-  let searchDiff = totalDiff
-  let fxFromRate = 0
-  
-  if (exchangeRate && ourAmountUSD && ourAmountUSD > 0) {
-    const ourINRAtCurrentRate = ourAmountUSD * exchangeRate
-    fxFromRate = Math.abs(ourAmount - ourINRAtCurrentRate)
-    searchDiff = (totalDiff > 0 ? 1 : -1) * (Math.abs(totalDiff) - fxFromRate)
-  }
-
-  // Try each TDS section
-  for (const section of TDS_SECTIONS) {
-    const expectedTDS = ourAmount * section.rate
-    const expectedTDSPct = section.rate
-    
-    // Check if narration matches this section's keywords
-    const narrationMatch = section.keywords.length === 0 || 
-      section.keywords.some(k => narr.includes(k))
-    
-    // Check if percentage difference matches TDS rate (within 0.5% tolerance)
-    const pctMatchesTDS = Math.abs(diffPct - expectedTDSPct) < 0.005
-
-    // Check if total diff ≈ expected TDS (within 5% of TDS amount)
-    const amountMatchesTDS = Math.abs(Math.abs(searchDiff) - expectedTDS) < expectedTDS * 0.05
-
-    if (pctMatchesTDS || amountMatchesTDS) {
-      const actualTDS = Math.min(Math.abs(totalDiff), expectedTDS)
-      const fxDiff = Math.abs(totalDiff) - actualTDS
-
-      // FX difference is small residual (< 2% of invoice)
-      let hasFX = Math.abs(fxDiff) > 0.5 && Math.abs(fxDiff) / ourAmount < 0.02
-      let finalFxAmount = hasFX ? Math.round(fxDiff * 100) / 100 : 0
-      
-      if (fxFromRate > 0) {
-        hasFX = true
-        finalFxAmount = Math.round(fxFromRate * 100) / 100
-      }
-
-      return {
-        hasTDS: true,
-        tdsSection: section.section,
-        tdsRate: section.rate,
-        tdsAmount: Math.round(actualTDS * 100) / 100,
-        hasFX,
-        fxAmount: finalFxAmount,
-        totalDiff: Math.round(totalDiff * 100) / 100,
-        diffPct: Math.round(diffPct * 10000) / 100,
-        classification: hasFX ? 'TDS_AND_FX' : 'TDS_ONLY'
-      }
+  let result: TDSFXResult
+  if (candidates.length === 0) {
+    result = diffPct < 0.015
+      ? { classification: 'FX_ONLY', fxAmount: diff, diffPct: diffPct * 100 }
+      : { classification: 'MISMATCH', diffPct: diffPct * 100 }
+  } else {
+    const best = candidates[0]
+    const theoreticalTDS = ourNet * best.rate
+    if (best.distance <= TIGHT_BAND) {
+      result = { classification: 'TDS_ONLY', tdsSection: best.section, tdsRate: best.rate, tdsAmount: theoreticalTDS, fxAmount: 0, diffPct: diffPct * 100 }
+    } else {
+      result = { classification: 'TDS_AND_FX', tdsSection: best.section, tdsRate: best.rate, tdsAmount: theoreticalTDS, fxAmount: diff - theoreticalTDS, diffPct: diffPct * 100 }
     }
   }
+  // Temporary verification log requested by the specification.
+  console.log('[TDS/FX]', { ourNet, partyNet, diffPct, section: result.tdsSection, classification: result.classification })
+  return result
+}
 
-  // No TDS match found
-  // Check if it's FX difference (small %, < 3%)
-  if (diffPct < 0.03 || fxFromRate > 0) {
-    let finalFxAmount = Math.round(Math.abs(totalDiff) * 100) / 100
-    if (fxFromRate > 0 && Math.abs(searchDiff) < 0.5) {
-       finalFxAmount = Math.round(fxFromRate * 100) / 100
-    }
+export function netByReference(rows: any[]) {
+  const groups = new Map<string, { netAmount: number, narration: string, date: Date | null, rows: any[] }>()
+  ;(rows ?? [])
+    .filter(r => r.entryType === 'invoice' || r.entryType === 'credit_note')
+    .forEach(r => {
+      if (!r.refNo) return
+      if (!groups.has(r.refNo)) groups.set(r.refNo, { netAmount: 0, narration: r.narration || '', date: r.date || null, rows: [] })
+      const g = groups.get(r.refNo)!
+      g.netAmount += r.entryType === 'credit_note' ? -Math.abs(r.amount) : Math.abs(r.amount)
+      g.rows.push(r)
+      if (!g.narration && r.narration) g.narration = r.narration
+      if (!g.date && r.date) g.date = r.date
+    })
+  return groups
+}
 
-    return {
-      hasTDS: false, tdsSection: '', tdsRate: 0, tdsAmount: 0,
-      hasFX: true,
-      fxAmount: finalFxAmount,
-      totalDiff: Math.round(totalDiff * 100) / 100,
-      diffPct: Math.round(diffPct * 10000) / 100,
-      classification: 'FX_ONLY'
-    }
-  }
+function statusFor(analysis: TDSFXResult, diff: number, fallback: string) {
+  if (analysis.classification === 'TDS_ONLY') return `Possible TDS Deduction ${String.fromCharCode(0x2014)} ${analysis.tdsSection}`
+  if (analysis.classification === 'TDS_AND_FX') return `Possible TDS + FX Difference ${String.fromCharCode(0x2014)} ${analysis.tdsSection}`
+  if (analysis.classification === 'FX_ONLY') return 'Possible FX Difference (Exchange Gain/Loss)'
+  if (analysis.classification === 'MISMATCH') return diff > 0 ? MATCH_STATUS.AMOUNT_MISMATCH_UNDER : MATCH_STATUS.AMOUNT_MISMATCH_OVER
+  return fallback
+}
 
-  // Large unexplained difference
+function resultFor(our: any, party: any, analysis: TDSFXResult, status: string, matchType: string, remarks = '') {
+  const difference = our.netAmount - party.netAmount
   return {
-    hasTDS: false, tdsSection: '', tdsRate: 0, tdsAmount: 0,
-    hasFX: false, fxAmount: 0,
-    totalDiff: Math.round(totalDiff * 100) / 100,
-    diffPct: Math.round(diffPct * 10000) / 100,
-    classification: 'MISMATCH'
+    refNo: our.refNo, rawRefNo: our.rows[0]?.rawRefNo, ourDate: our.date, ourAmount: our.netAmount,
+    ourAmountUSD: Math.abs(our.rows[0]?.amountUSD || 0), ourCurrency: our.rows[0]?.detectedCurrency || 'INR',
+    ourNarration: our.narration, partyDate: party.date, partyAmount: party.netAmount,
+    partyCurrency: party.rows[0]?.detectedCurrency || 'INR', partyNarration: party.narration, difference,
+    status, remarks, matchType, diffPct: analysis.diffPct || 0, tdsSection: analysis.tdsSection || '',
+    tdsRate: analysis.tdsRate || 0, tdsAmount: analysis.tdsAmount || 0, fxAmount: analysis.fxAmount || 0,
+    classification: analysis.classification,
   }
 }
 
-export function reconcileInvoices(ourRows: any[], partyRows: any[], exchangeRate?: number) {
-  // Filter to invoices only
-  const ourInvoices = (ourRows ?? []).filter((r) => r.entryType === 'invoice')
-  const partyInvoices = (partyRows ?? []).filter((r) => r.entryType === 'invoice')
-
+export function reconcileInvoices(ourRows: any[], partyRows: any[], _exchangeRate?: number) {
+  const ourRaw = (ourRows ?? []).filter(r => r.entryType === 'invoice' || r.entryType === 'credit_note')
+  const partyRaw = (partyRows ?? []).filter(r => r.entryType === 'invoice' || r.entryType === 'credit_note')
+  const ourGroups = [...netByReference(ourRaw)].map(([refNo, value]) => ({ refNo, ...value }))
+  const partyGroups = [...netByReference(partyRaw)].map(([refNo, value]) => ({ refNo, ...value }))
   const results: any[] = []
-  const matchedPartyIndexes = new Set()
+  const matchedOur = new Set<string>(), matchedParty = new Set<string>()
 
-  // STEP 1: Exact ref match
-  ourInvoices.forEach((ourRow) => {
-    if (!ourRow.refNo) return
-
-    const exactMatches = partyInvoices.filter(
-      (p, idx) => p.refNo === ourRow.refNo && !matchedPartyIndexes.has(idx)
-    )
-
-    if (exactMatches.length > 0) {
-      const party = exactMatches[0]
-      const partyIdx = partyInvoices.indexOf(party)
-      matchedPartyIndexes.add(partyIdx)
-
-      const ourCurrency = ourRow.detectedCurrency || 'INR'
-      const partyCurrency = party.detectedCurrency || 'INR'
-
-      let ourAmt = Math.abs(ourRow.amount)
-      let partyAmt = Math.abs(party.amount)
-
-      const diff = ourAmt - partyAmt
-      const pctDiff = ourAmt > 0 ? Math.abs(diff) / ourAmt : 0
-
-      let status
-      let matchData = {}
-
-      const analysis = classifyDifference(ourAmt, partyAmt, ourRow.narration, party.narration, ourRow.amountUSD, exchangeRate)
-
-      if (analysis.classification === 'NONE') {
-        status = MATCH_STATUS.MATCHED
-      } else if (analysis.classification === 'TDS_ONLY') {
-        status = `TDS Deduction — ${analysis.tdsSection}`
-      } else if (analysis.classification === 'TDS_AND_FX') {
-        status = `TDS + FX Difference — ${analysis.tdsSection}`
-      } else if (analysis.classification === 'FX_ONLY') {
-        status = 'FX Difference (Exchange Gain/Loss)'
-      } else {
-        status = diff > 0 
-          ? MATCH_STATUS.AMOUNT_MISMATCH_UNDER 
-          : MATCH_STATUS.AMOUNT_MISMATCH_OVER
-      }
-      
-      matchData = {
-        tdsSection: analysis.tdsSection,
-        tdsRate: analysis.tdsRate,
-        tdsAmount: analysis.tdsAmount,
-        fxAmount: analysis.fxAmount,
-        diffPct: analysis.diffPct,
-        classification: analysis.classification
-      }
-
-      let remarks = ''
-      if (ourRow.amountUSD && ourRow.amountUSD > 0) {
-        remarks = `USD: $${ourRow.amountUSD}`
-      }
-
-      results.push({
-        refNo: ourRow.refNo,
-        rawRefNo: ourRow.rawRefNo,
-        ourDate: ourRow.date,
-        ourAmount: ourAmt,
-        ourAmountUSD: Math.abs(ourRow.amountUSD || 0),
-        ourCurrency,
-        ourNarration: ourRow.narration,
-        partyDate: party.date,
-        partyAmount: partyAmt,
-        partyCurrency,
-        partyNarration: party.narration,
-        difference: diff,
-        status,
-        remarks,
-        matchType: 'exact',
-        ...matchData,
-      })
-    }
-  })
-
-  // STEP 2: Fuzzy match unmatched our invoices
-  const unmatchedOur = ourInvoices.filter((r) => r.refNo && !results.find((res) => res.refNo === r.refNo))
-  const unmatchedParty = partyInvoices.filter((_, idx) => !matchedPartyIndexes.has(idx))
-
-  if (unmatchedOur.length > 0 && unmatchedParty.length > 0) {
-    const fuse = new Fuse<any>(unmatchedParty, {
-      keys: ['refNo'],
-      threshold: 0.2, // tight — only very close matches
-      includeScore: true,
-    })
-
-    unmatchedOur.forEach((ourRow) => {
-      if (!ourRow.refNo) return
-      const fuseResults = fuse.search(ourRow.refNo)
-
-      if (fuseResults.length > 0) {
-        const best = fuseResults[0]
-        const party = best.item
-        let ourAmt = Math.abs(ourRow.amount)
-        let partyAmt = Math.abs(party.amount)
-        const ourCurrency = ourRow.detectedCurrency || 'INR'
-        const partyCurrency = party.detectedCurrency || 'INR'
-        
-        const amountClose = Math.abs(ourAmt - partyAmt) / (ourAmt || 1) < 0.05 // within 5%
-
-        if (amountClose) {
-          matchedPartyIndexes.add(partyInvoices.indexOf(party))
-
-          let status = MATCH_STATUS.POSSIBLE_TYPO
-          let matchData = {}
-          const analysis = classifyDifference(ourAmt, partyAmt, ourRow.narration, party.narration, ourRow.amountUSD, exchangeRate)
-          
-          if (analysis.classification !== 'NONE') {
-            if (analysis.classification === 'TDS_ONLY') status = `TDS Deduction — ${analysis.tdsSection}`
-            else if (analysis.classification === 'TDS_AND_FX') status = `TDS + FX Difference — ${analysis.tdsSection}`
-            else if (analysis.classification === 'FX_ONLY') status = 'FX Difference (Exchange Gain/Loss)'
-            else status = MATCH_STATUS.POSSIBLE_TYPO // Keep possible typo if just mismatch
-            
-            matchData = {
-              tdsSection: analysis.tdsSection,
-              tdsRate: analysis.tdsRate,
-              tdsAmount: analysis.tdsAmount,
-              fxAmount: analysis.fxAmount,
-              diffPct: analysis.diffPct,
-              classification: analysis.classification
-            }
-          }
-
-          results.push({
-            refNo: ourRow.refNo,
-            rawRefNo: ourRow.rawRefNo,
-            ourDate: ourRow.date,
-            ourAmount: Math.abs(ourRow.amount),
-            ourAmountUSD: Math.abs(ourRow.amountUSD || 0),
-            ourCurrency: ourRow.detectedCurrency || 'INR',
-            ourNarration: ourRow.narration,
-            partyDate: party.date,
-            partyAmount: Math.abs(party.amount),
-            partyCurrency: party.detectedCurrency || 'INR',
-            partyNarration: party.narration,
-            difference: Math.abs(ourRow.amount) - Math.abs(party.amount),
-            status,
-            remarks: `Party ref: ${party.rawRefNo}${ourRow.amountUSD && ourRow.amountUSD > 0 ? ` | USD: $${ourRow.amountUSD}` : ''}`,
-            matchType: 'fuzzy',
-            ...matchData,
-          })
-        }
-      }
-    })
+  const addMatch = (our: any, party: any, matchType: string, fallback: string, remarks = '') => {
+    const analysis = classifyDifference(our.netAmount, party.netAmount, `${our.narration || ''} ${party.narration || ''}`)
+    results.push(resultFor(our, party, analysis, statusFor(analysis, our.netAmount - party.netAmount, fallback), matchType, remarks))
+    matchedOur.add(our.refNo); matchedParty.add(party.refNo)
   }
 
-  // STEP 3: Amount + date fallback for still-unmatched
-  const stillUnmatchedOur = ourInvoices.filter(
-    (r) => !results.find((res) => res.refNo === r.refNo && res.matchType !== 'missing')
-  )
-  const stillUnmatchedParty = partyInvoices.filter((_, idx) => !matchedPartyIndexes.has(idx))
-
-  stillUnmatchedOur.forEach((ourRow) => {
-    const amountDateMatch = stillUnmatchedParty.find((p) => {
-      let ourAmt = Math.abs(ourRow.amount)
-      let partyAmt = Math.abs(p.amount)
-      
-      const ourCurrency = ourRow.detectedCurrency || 'INR'
-      const partyCurrency = p.detectedCurrency || 'INR'
-
-      const amountClose = Math.abs(ourAmt - partyAmt) / (ourAmt || 1) < 0.01
-      if (!amountClose) return false
-      if (!ourRow.date || !p.date) return amountClose
-      const dayDiff = Math.abs(ourRow.date - p.date) / (1000 * 60 * 60 * 24)
-      return dayDiff <= 7
-    })
-
-    if (amountDateMatch) {
-      matchedPartyIndexes.add(partyInvoices.indexOf(amountDateMatch))
-      let status = MATCH_STATUS.MATCHED_BY_AMOUNT_DATE
-      let matchData = {}
-      let ourAmt = Math.abs(ourRow.amount)
-      let partyAmt = Math.abs(amountDateMatch.amount)
-      const analysis = classifyDifference(ourAmt, partyAmt, ourRow.narration, amountDateMatch.narration, ourRow.amountUSD, exchangeRate)
-      
-      if (analysis.classification !== 'NONE') {
-        if (analysis.classification === 'TDS_ONLY') status = `TDS Deduction — ${analysis.tdsSection}`
-        else if (analysis.classification === 'TDS_AND_FX') status = `TDS + FX Difference — ${analysis.tdsSection}`
-        else if (analysis.classification === 'FX_ONLY') status = 'FX Difference (Exchange Gain/Loss)'
-        else status = MATCH_STATUS.MATCHED_BY_AMOUNT_DATE
-        
-        matchData = {
-          tdsSection: analysis.tdsSection,
-          tdsRate: analysis.tdsRate,
-          tdsAmount: analysis.tdsAmount,
-          fxAmount: analysis.fxAmount,
-          diffPct: analysis.diffPct,
-          classification: analysis.classification
-        }
-      }
-      
-      results.push({
-        refNo: ourRow.refNo || '(no ref)',
-        rawRefNo: ourRow.rawRefNo,
-        ourDate: ourRow.date,
-        ourAmount: Math.abs(ourRow.amount),
-        ourAmountUSD: Math.abs(ourRow.amountUSD || 0),
-        ourCurrency: ourRow.detectedCurrency || 'INR',
-        ourNarration: ourRow.narration,
-        partyDate: amountDateMatch.date,
-        partyAmount: Math.abs(amountDateMatch.amount),
-        partyCurrency: amountDateMatch.detectedCurrency || 'INR',
-        partyNarration: amountDateMatch.narration,
-        difference: ourAmt - partyAmt,
-        status,
-        remarks: `Our ref: ${ourRow.rawRefNo || 'none'} | Party ref: ${amountDateMatch.rawRefNo || 'none'}${ourRow.amountUSD && ourRow.amountUSD > 0 ? ` | USD: $${ourRow.amountUSD}` : ''}`,
-        matchType: 'amount_date',
-        ...matchData,
-      })
-    } else {
-      results.push({
-        refNo: ourRow.refNo || '(no ref)',
-        rawRefNo: ourRow.rawRefNo,
-        ourDate: ourRow.date,
-        ourAmount: Math.abs(ourRow.amount),
-        ourAmountUSD: Math.abs(ourRow.amountUSD || 0),
-        ourCurrency: ourRow.detectedCurrency || 'INR',
-        ourNarration: ourRow.narration,
-        partyDate: null,
-        partyAmount: 0,
-        partyCurrency: 'INR',
-        partyNarration: '',
-        difference: Math.abs(ourRow.amount),
-        status: MATCH_STATUS.MISSING_IN_PARTY,
-        remarks: '',
-        matchType: 'missing',
-      })
-    }
+  ourGroups.forEach(our => {
+    const party = partyGroups.find(p => p.refNo === our.refNo && !matchedParty.has(p.refNo))
+    if (party) addMatch(our, party, 'exact', MATCH_STATUS.MATCHED)
   })
 
-  // STEP 4: Party invoices with no match in our books
-  partyInvoices.forEach((p, idx) => {
-    if (!matchedPartyIndexes.has(idx)) {
-      results.push({
-        refNo: p.refNo || '(no ref)',
-        rawRefNo: p.rawRefNo,
-        ourDate: null,
-        ourAmount: 0,
-        ourAmountUSD: 0,
-        ourCurrency: 'INR',
-        ourNarration: '',
-        partyDate: p.date,
-        partyAmount: Math.abs(p.amount),
-        partyCurrency: p.detectedCurrency || 'INR',
-        partyNarration: p.narration,
-        difference: -Math.abs(p.amount),
-        status: MATCH_STATUS.MISSING_IN_OURS,
-        remarks: '',
-        matchType: 'missing',
-      })
-    }
+  const fuzzy = new Fuse(partyGroups.filter(p => !matchedParty.has(p.refNo)), { keys: ['refNo'], threshold: 0.2 })
+  ourGroups.filter(o => !matchedOur.has(o.refNo)).forEach(our => {
+    const hit = fuzzy.search(our.refNo)[0]?.item
+    if (hit && Math.abs(our.netAmount - hit.netAmount) / (Math.abs(our.netAmount) || 1) < 0.05) addMatch(our, hit, 'fuzzy', MATCH_STATUS.POSSIBLE_TYPO, `Party ref: ${hit.rows[0]?.rawRefNo || hit.refNo}`)
   })
 
+  ourGroups.filter(o => !matchedOur.has(o.refNo)).forEach(our => {
+    const party = partyGroups.find(p => !matchedParty.has(p.refNo) && Math.abs(our.netAmount - p.netAmount) / (Math.abs(our.netAmount) || 1) < 0.01 && (!our.date || !p.date || Math.abs(new Date(our.date).getTime() - new Date(p.date).getTime()) / 86400000 <= 7))
+    if (party) addMatch(our, party, 'amount_date', MATCH_STATUS.MATCHED_BY_AMOUNT_DATE)
+  })
+
+  ourRaw.filter(r => !r.refNo || !matchedOur.has(r.refNo)).forEach(r => results.push({ refNo: r.refNo || '(no ref)', rawRefNo: r.rawRefNo, ourDate: r.date, ourAmount: Math.abs(r.amount), ourAmountUSD: Math.abs(r.amountUSD || 0), ourCurrency: r.detectedCurrency || 'INR', ourNarration: r.narration, partyDate: null, partyAmount: 0, partyCurrency: 'INR', partyNarration: '', difference: Math.abs(r.amount), status: MATCH_STATUS.MISSING_IN_PARTY, remarks: '', matchType: 'missing' }))
+  partyRaw.filter(r => !r.refNo || !matchedParty.has(r.refNo)).forEach(r => results.push({ refNo: r.refNo || '(no ref)', rawRefNo: r.rawRefNo, ourDate: null, ourAmount: 0, ourAmountUSD: 0, ourCurrency: 'INR', ourNarration: '', partyDate: r.date, partyAmount: Math.abs(r.amount), partyCurrency: r.detectedCurrency || 'INR', partyNarration: r.narration, difference: -Math.abs(r.amount), status: MATCH_STATUS.MISSING_IN_OURS, remarks: '', matchType: 'missing' }))
   return results
 }
 
-export function buildDetailedSummary(
-  results: any[],
-  ourRows: any[],
-  partyRows: any[],
-  ourOpeningBalance: any[],
-  partyOpeningBalance: any[]
-) {
-  // Opening balances
-  const ourOB = ourOpeningBalance.reduce((s, r) => s + r.amount, 0)
-  const partyOB = partyOpeningBalance.reduce((s, r) => s + r.amount, 0)
-
-  // Invoice totals
-  const ourInvoiceTotal = ourRows
-    .filter(r => r.entryType === 'invoice').reduce((s, r) => s + r.amount, 0)
-  const partyInvoiceTotal = partyRows
-    .filter(r => r.entryType === 'invoice').reduce((s, r) => s + r.amount, 0)
-
-  // Payment totals  
-  const ourPaymentTotal = ourRows
-    .filter(r => r.entryType === 'payment').reduce((s, r) => s + Math.abs(r.amount), 0)
-  const partyPaymentTotal = partyRows
-    .filter(r => r.entryType === 'payment').reduce((s, r) => s + Math.abs(r.amount), 0)
-
-  // TDS totals
-  const partyTDSTotal = partyRows
-    .filter(r => r.entryType === 'tds').reduce((s, r) => s + Math.abs(r.amount), 0)
-
-  // Net balances
+export function buildDetailedSummary(results: any[], ourRows: any[], partyRows: any[], ourOpeningBalance: any[], partyOpeningBalance: any[]) {
+  const ourOB = (ourOpeningBalance ?? []).reduce((s, r) => s + r.amount, 0)
+  const partyOB = (partyOpeningBalance ?? []).reduce((s, r) => s + r.amount, 0)
+  const ourInvoiceTotal = (ourRows ?? []).filter(r => r.entryType === 'invoice').reduce((s, r) => s + r.amount, 0)
+  const partyInvoiceTotal = (partyRows ?? []).filter(r => r.entryType === 'invoice').reduce((s, r) => s + r.amount, 0)
+  const ourPaymentTotal = (ourRows ?? []).filter(r => r.entryType === 'payment').reduce((s, r) => s + Math.abs(r.amount), 0)
+  const partyPaymentTotal = (partyRows ?? []).filter(r => r.entryType === 'payment').reduce((s, r) => s + Math.abs(r.amount), 0)
+  const partyTDSTotal = (partyRows ?? []).filter(r => r.entryType === 'tds').reduce((s, r) => s + Math.abs(r.amount), 0)
   const ourNetBalance = ourOB + ourInvoiceTotal - ourPaymentTotal
   const partyNetBalance = partyOB + partyInvoiceTotal - partyPaymentTotal - partyTDSTotal
-
-  // Reconciling items from results
-  const invoicesNotInParty = results
-    .filter(r => r.status === MATCH_STATUS.MISSING_IN_PARTY)
-    .reduce((s, r) => s + r.ourAmount, 0)
-  
-  const invoicesNotInOurs = results
-    .filter(r => r.status === MATCH_STATUS.MISSING_IN_OURS)
-    .reduce((s, r) => s + r.partyAmount, 0)
-
-  const ourTDSTotal = ourRows
-    .filter(r => r.entryType === 'tds')
-    .reduce((s, r) => s + Math.abs(r.amount), 0)
-
-
-  const tdsExplicitGap = Math.max(0, partyTDSTotal - ourTDSTotal)
-
-  const tdsFromMismatch = results
-    .filter(r => String(r.status).startsWith('TDS Deduction'))
-    .reduce((s, r) => s + (r.tdsAmount || 0), 0)
-
-  const tdsToBeBooked = tdsFromMismatch + tdsExplicitGap
-
-  const amountDifferences = results
-    .filter(r => String(r.status).includes('Mismatch') && !String(r.status).startsWith('TDS'))
-    .reduce((s, r) => s + Math.abs(r.difference), 0)
-
-  // Derived balance (starting from party, adding adjustments to reach our balance)
-  const derivedBalance = partyNetBalance
-    + invoicesNotInParty
-    - invoicesNotInOurs
-    + tdsToBeBooked
-    - amountDifferences
-
-  const finalDifference = ourNetBalance - derivedBalance
-
-  // Match counts
-  const matched = results.filter(r => r.status === MATCH_STATUS.MATCHED).length
-  const tdsFlagged = results.filter(r => String(r.status).startsWith('TDS')).length
-  const missingInParty = results.filter(r => r.status === MATCH_STATUS.MISSING_IN_PARTY).length
-  const missingInOurs = results.filter(r => r.status === MATCH_STATUS.MISSING_IN_OURS).length
-  const mismatch = results.filter(r => String(r.status).includes('Mismatch')).length
-  const possible = results.filter(r => String(r.status).includes('Possible')).length
-
-  return {
-    ourOB, partyOB,
-    ourInvoiceTotal, partyInvoiceTotal,
-    ourPaymentTotal, partyPaymentTotal,
-    partyTDSTotal, tdsToBeBooked, tdsExplicitGap, tdsFromMismatch,
-    ourNetBalance, partyNetBalance,
-    invoicesNotInParty, invoicesNotInOurs,
-    amountDifferences, derivedBalance,
-    finalDifference,
-    matched, tdsFlagged, missingInParty,
-    missingInOurs, mismatch, possible,
-    totalRows: results.length
-  }
+  const invoicesNotInParty = results.filter(r => r.status === MATCH_STATUS.MISSING_IN_PARTY).reduce((s, r) => s + r.ourAmount, 0)
+  const invoicesNotInOurs = results.filter(r => r.status === MATCH_STATUS.MISSING_IN_OURS).reduce((s, r) => s + r.partyAmount, 0)
+  const ourTDSTotal = (ourRows ?? []).filter(r => r.entryType === 'tds').reduce((s, r) => s + Math.abs(r.amount), 0)
+  const partyTDSGap = Math.max(0, partyTDSTotal - ourTDSTotal)
+  const tdsFromMismatch = results.filter(r => String(r.status).includes('TDS')).reduce((s, r) => s + (r.tdsAmount || 0), 0)
+  const amountDifferences = results.filter(r => String(r.status).includes('Mismatch')).reduce((s, r) => s + Math.abs(r.difference), 0)
+  const derivedBalance = partyNetBalance + invoicesNotInParty - invoicesNotInOurs + partyTDSGap + tdsFromMismatch - amountDifferences
+  return { ourOB, partyOB, ourInvoiceTotal, partyInvoiceTotal, ourPaymentTotal, partyPaymentTotal, partyTDSTotal, tdsToBeBooked: partyTDSGap + tdsFromMismatch, tdsExplicitGap: partyTDSGap, tdsFromMismatch, ourNetBalance, partyNetBalance, invoicesNotInParty, invoicesNotInOurs, amountDifferences, derivedBalance, finalDifference: ourNetBalance - derivedBalance, matched: results.filter(r => r.status === MATCH_STATUS.MATCHED).length, tdsFlagged: results.filter(r => String(r.status).includes('TDS')).length, missingInParty: results.filter(r => r.status === MATCH_STATUS.MISSING_IN_PARTY).length, missingInOurs: results.filter(r => r.status === MATCH_STATUS.MISSING_IN_OURS).length, mismatch: results.filter(r => String(r.status).includes('Mismatch')).length, possible: results.filter(r => String(r.status).includes('Possible')).length, totalRows: results.length }
 }

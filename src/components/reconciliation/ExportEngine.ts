@@ -132,7 +132,7 @@ export function exportReconciliation(
     'Status'
   ]
   
-  const tdsResults = (results ?? []).filter(r => String(r.status).startsWith('TDS') || r.classification === 'TDS_ONLY' || r.classification === 'TDS_AND_FX')
+  const tdsResults = (results ?? []).filter(r => String(r.status).includes('TDS') || r.classification === 'TDS_ONLY' || r.classification === 'TDS_AND_FX')
   const tdsRows = tdsResults.map(r => [
     r.rawRefNo || r.refNo,
     r.ourAmount,

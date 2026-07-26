@@ -37,8 +37,8 @@ function fmtDate(d: any) {
 
 function statusBadge(status: string) {
   let bg = STATUS_COLORS[status]
-  if (!bg && String(status).startsWith('TDS Deduction')) bg = '#8b5cf6'
-  if (!bg && String(status).startsWith('TDS Amount')) bg = '#f97316'
+  if (!bg && String(status).includes('TDS')) bg = '#8b5cf6'
+  if (!bg && String(status).includes('FX')) bg = '#0891b2'
   if (!bg) bg = 'rgba(255,255,255,0.08)'
   return (
     <span
@@ -134,8 +134,8 @@ function applyTabFilter(row, tabKey) {
   if (tabKey === 'ALL') return true
   if (tabKey === 'MATCHED') return row.status === MATCH_STATUS.MATCHED
   if (tabKey === 'MISMATCH') return String(row.status).includes('Mismatch')
-  if (tabKey === 'TDS') return String(row.status).startsWith('TDS')
-  if (tabKey === 'FX') return row.classification === 'FX_ONLY' || row.classification === 'TDS_AND_FX'
+  if (tabKey === 'TDS') return String(row.status).includes('TDS')
+  if (tabKey === 'FX') return String(row.status).includes('FX')
   if (tabKey === 'MISSING')
     return row.status === MATCH_STATUS.MISSING_IN_PARTY || row.status === MATCH_STATUS.MISSING_IN_OURS
   if (tabKey === 'POSSIBLE')
@@ -184,7 +184,7 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
       let status = 'Open'
       if (r.status === MATCH_STATUS.MATCHED) status = 'Resolved'
       else if (r.status === MATCH_STATUS.MISSING_IN_PARTY) status = 'Invoice Not Received by Party'
-      else if (String(r.status).startsWith('TDS Deduction')) status = 'TDS to be Booked'
+      else if (String(r.status).includes('TDS')) status = 'TDS to be Booked'
       initial[key] = status
     })
     return initial
@@ -339,7 +339,7 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
                   const partyRow = results[partyIdx];
                   const ourAmt = Math.abs(ourRow.ourAmount);
                   const partyAmt = Math.abs(partyRow.partyAmount);
-                  const analysis = classifyDifference(ourAmt, partyAmt, ourRow.ourNarration, partyRow.partyNarration, ourRow.ourAmountUSD);
+                  const analysis = classifyDifference(ourAmt, partyAmt, `${ourRow.ourNarration || ''} ${partyRow.partyNarration || ''}`);
                   
                   ourRow.partyDate = partyRow.partyDate;
                   ourRow.partyAmount = partyRow.partyAmount;
@@ -399,6 +399,8 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
                 <th role="button" onClick={() => toggleSort('partyAmount')}>Party Amount</th>
                 <th role="button" onClick={() => toggleSort('difference')}>Difference</th>
                 <th role="button" onClick={() => toggleSort('diffPct')}>Diff %</th>
+                <th role="button" onClick={() => toggleSort('tdsSection')}>TDS Section</th>
+                <th role="button" onClick={() => toggleSort('tdsAmount')}>TDS Amount</th>
                 <th role="button" onClick={() => toggleSort('fxAmount')}>FX Amount</th>
                 <th role="button" onClick={() => toggleSort('status')}>Status</th>
                 <th role="button" onClick={() => toggleSort('actionStatus')}>Action Status</th>
@@ -432,6 +434,8 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
                     <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.partyAmount ? `${currencySymbol(r.partyCurrency || 'INR')} ${fmtMoney(r.partyAmount)}` : '\u2014'}</td>
                     <td style={{ fontVariantNumeric: 'tabular-nums', color: (Number(r.difference) || 0) !== 0 ? 'var(--red)' : 'var(--green)' }}>{fmtMoney(r.difference) || '\u2014'}</td>
                     <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.diffPct ? r.diffPct.toFixed(2) + '%' : '\u2014'}</td>
+                    <td>{r.tdsSection || '\u2014'}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(r.tdsAmount) || '\u2014'}</td>
                     <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(r.fxAmount) || '\u2014'}</td>
                     <td>{statusBadge(r.status)}</td>
                     <td style={{ minWidth: 180 }}>

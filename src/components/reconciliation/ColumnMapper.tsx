@@ -28,6 +28,9 @@ function smartDefaultForValue(value: string, narrationSamples: string[]): string
   const s = String(value).toLowerCase().trim()
   
   // TDS check first — before Journal defaults to Adjustment
+  if (s === 'dr') return ENTRY_TYPES.INVOICE
+  if (s === 'cr') return ENTRY_TYPES.PAYMENT
+
   const tdsKeywords = ['tds', '194c', '194j', '194h', '194i', '194q', 
                        'tax deducted', 'tax deduction', 'withheld']
   const hasTDSInValue = tdsKeywords.some(k => s.includes(k))
