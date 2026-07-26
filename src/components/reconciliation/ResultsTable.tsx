@@ -9,7 +9,7 @@ const TABS = [
   { key: 'TDS', label: 'TDS Deductions' },
   { key: 'FX', label: 'FX Differences' },
   { key: 'MISSING', label: 'Missing' },
-  { key: 'POSSIBLE', label: 'Possible Matches' },
+  { key: 'POSSIBLE', label: 'Ref Typo / Fuzzy Matches' },
   { key: 'DUPLICATES', label: 'Duplicates' },
 ]
 
@@ -33,6 +33,23 @@ function fmtDate(d: any) {
   } catch {
     return ''
   }
+}
+
+function renderOurAmount(row: any) {
+  if (!row.ourAmount) return '\u2014'
+
+  const amount = fmtMoney(row.ourAmount)
+  const hasInrAndUsd = row.ourCurrency === 'INR' && Number(row.ourAmountUSD) > 0
+  if (hasInrAndUsd) {
+    return (
+      <>
+        ₹ {amount}{' '}
+        <small style={{ color: 'var(--text-muted)' }}>(${fmtMoney(row.ourAmountUSD)})</small>
+      </>
+    )
+  }
+
+  return `${currencySymbol(row.ourCurrency || 'INR')} ${amount}`
 }
 
 function statusBadge(status: string) {
@@ -139,7 +156,7 @@ function applyTabFilter(row, tabKey) {
   if (tabKey === 'MISSING')
     return row.status === MATCH_STATUS.MISSING_IN_PARTY || row.status === MATCH_STATUS.MISSING_IN_OURS
   if (tabKey === 'POSSIBLE')
-    return row.status === MATCH_STATUS.POSSIBLE_TYPO || row.status === MATCH_STATUS.MATCHED_BY_AMOUNT_DATE
+    return String(row.status).includes('Ref Typo') || String(row.status).includes('Matched by Amount/Date')
   if (tabKey === 'DUPLICATES') return String(row.status).startsWith('Duplicate')
   return true
 }
@@ -429,7 +446,7 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
                     </td>
                     <td style={{ fontWeight: 700 }}>{r.rawRefNo || r.refNo}</td>
                     <td>{fmtDate(r.ourDate) || '\u2014'}</td>
-                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.ourAmount ? `${currencySymbol(r.ourCurrency || 'INR')} ${fmtMoney(r.ourAmount)}` : '\u2014'}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{renderOurAmount(r)}</td>
                     <td>{fmtDate(r.partyDate) || '\u2014'}</td>
                     <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.partyAmount ? `${currencySymbol(r.partyCurrency || 'INR')} ${fmtMoney(r.partyAmount)}` : '\u2014'}</td>
                     <td style={{ fontVariantNumeric: 'tabular-nums', color: (Number(r.difference) || 0) !== 0 ? 'var(--red)' : 'var(--green)' }}>{fmtMoney(r.difference) || '\u2014'}</td>
