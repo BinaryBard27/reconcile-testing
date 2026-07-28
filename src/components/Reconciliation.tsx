@@ -4,6 +4,14 @@ import ManualRecoFlow from './reconciliation/ManualRecoFlow'
 
 export default function Reconciliation() {
   const [mode, setMode] = useState<'HUB' | 'CONVERT' | 'MANUAL_RECO'>('HUB')
+  const [mappingMessage, setMappingMessage] = useState('')
+
+  function clearSavedMappings() {
+    if (!window.confirm('This clears remembered column mappings for all files. Continue?')) return
+
+    localStorage.removeItem('micro-ledger-mappings')
+    setMappingMessage('Saved mappings cleared. Next upload will run fresh auto-detection.')
+  }
 
   if (mode === 'CONVERT') {
     return <DataConversionFlow onBack={() => setMode('HUB')} />
@@ -19,6 +27,17 @@ export default function Reconciliation() {
         <h1>LedgerMatch Hub</h1>
         <p>Convert ledger data or run advanced reconciliations.</p>
       </header>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        <button type="button" onClick={clearSavedMappings}>
+          Clear All Saved Mappings
+        </button>
+        {mappingMessage && (
+          <p role="status" style={{ color: 'var(--text-muted)', margin: 0 }}>
+            {mappingMessage}
+          </p>
+        )}
+      </div>
 
       <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
         <div className="card" style={{ cursor: 'pointer', transition: 'transform 0.2s' }} onClick={() => setMode('CONVERT')}>

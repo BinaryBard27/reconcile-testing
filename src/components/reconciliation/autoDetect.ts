@@ -293,6 +293,9 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
       h.toLowerCase().replace(/\s+/g,'') === 'reference'
     )
     suggestion.refNo = sapRefExact || ''
+    const sapDate = headers.find(h => headerKey(h) === 'document date')
+      || headers.find(h => headerKey(h) === 'posting date')
+    if (sapDate) suggestion.date = sapDate
     const docCurrencyValue = headers.find(h => 
       h.toLowerCase().replace(/\s+/g,'').includes('documentcurrencyvalue') ||
       h.toLowerCase().replace(/\s+/g,'').includes('amountindoc')
