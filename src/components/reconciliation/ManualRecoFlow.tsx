@@ -73,16 +73,18 @@ function buildIssues({ rawRows, mapping, entryTypeMap, normalizedRows }: any) {
     else if (info.type === 'INSTALLMENT') dups.INSTALLMENT.push({ ref, count: info.rows.length })
   })
 
-  let unclassified = 0
+  let deliberateIgnore = 0
+  let unrecognized = 0
   if (mapping?.entryType) {
     for (const r of rawRows ?? []) {
       const raw = String(r?.[mapping.entryType] ?? '').trim()
-      const cls = entryTypeMap?.[raw] ?? 'ignore'
-      if (cls === 'ignore') unclassified++
+      const cls = entryTypeMap?.[raw]
+      if (cls === 'ignore') deliberateIgnore++
+      else if (cls == null) unrecognized++
     }
   }
 
-  return { noReference, duplicates: dups, unclassified }
+  return { noReference, duplicates: dups, deliberateIgnore, unrecognized }
 }
 
 function autoRemoveExportDuplicates(rows: any[], duplicatesMap: any) {
@@ -233,20 +235,26 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
   function onOurMappingComplete(mapping: any, entryTypeMap: any, mappingConfig: any) {
     const norm = normalizeRows(ourRawRows, mapping, entryTypeMap, mappingConfig)
     const { openingBalanceRows, transactionRows } = separateOpeningBalance(norm)
+    const totalRawRows = ourRawRows.length
+    const excludedRows = totalRawRows - transactionRows.length
+    const excludedPct = totalRawRows === 0 ? 0 : excludedRows / totalRawRows
     setOurNormalized(transactionRows)
     setOurOpeningBalance(openingBalanceRows)
     setOurInvoiceCount(transactionRows.filter((r: any) => r.entryType === 'invoice').length)
-    setOurIssues(buildIssues({ rawRows: ourRawRows, mapping, entryTypeMap, normalizedRows: transactionRows }))
+    setOurIssues({ ...buildIssues({ rawRows: ourRawRows, mapping, entryTypeMap, normalizedRows: transactionRows }), totalRawRows, excludedRows, excludedPct })
     setStepIndex(2)
   }
 
   function onPartyMappingComplete(mapping: any, entryTypeMap: any, mappingConfig: any) {
     const norm = normalizeRows(partyRawRows, mapping, entryTypeMap, mappingConfig)
     const { openingBalanceRows, transactionRows } = separateOpeningBalance(norm)
+    const totalRawRows = partyRawRows.length
+    const excludedRows = totalRawRows - transactionRows.length
+    const excludedPct = totalRawRows === 0 ? 0 : excludedRows / totalRawRows
     setPartyNormalized(transactionRows)
     setPartyOpeningBalance(openingBalanceRows)
     setPartyInvoiceCount(transactionRows.filter((r: any) => r.entryType === 'invoice').length)
-    setPartyIssues(buildIssues({ rawRows: partyRawRows, mapping, entryTypeMap, normalizedRows: transactionRows }))
+    setPartyIssues({ ...buildIssues({ rawRows: partyRawRows, mapping, entryTypeMap, normalizedRows: transactionRows }), totalRawRows, excludedRows, excludedPct })
     setStepIndex(4)
   }
 
@@ -354,8 +362,12 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
 
       {stepIndex === 4 && (
         <DataQualityPanel
-          ourIssues={ourIssues ?? { noReference: 0, duplicates: {}, unclassified: 0 }}
-          partyIssues={partyIssues ?? { noReference: 0, duplicates: {}, unclassified: 0 }}
+          ourIssues={ourIssues ?? { noReference: 0, duplicates: {}, deliberateIgnore: 0, unrecognized: 0, excludedRows: 0, excludedPct: 0 }}
+          partyIssues={partyIssues ?? { noReference: 0, duplicates: {}, deliberateIgnore: 0, unrecognized: 0, excludedRows: 0, excludedPct: 0 }}
+          ourExcludedPct={ourIssues?.excludedPct ?? 0}
+          ourExcludedRows={ourIssues?.excludedRows ?? 0}
+          partyExcludedPct={partyIssues?.excludedPct ?? 0}
+          partyExcludedRows={partyIssues?.excludedRows ?? 0}
           ourInvoiceCount={ourInvoiceCount}
           partyInvoiceCount={partyInvoiceCount}
           onFix={() => setStepIndex(3)}

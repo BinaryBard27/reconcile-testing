@@ -24,7 +24,7 @@ const ENTRY_TYPE_LABELS = [
   { value: ENTRY_TYPES.IGNORE, label: 'Ignore' },
 ]
 
-function smartDefaultForValue(value: string, narrationSamples: string[]): string {
+function smartDefaultForValue(value: string, narrationSamples: string[]): string | null {
   const s = String(value).toLowerCase().trim()
   
   // TDS check first — before Journal defaults to Adjustment
@@ -55,7 +55,7 @@ function smartDefaultForValue(value: string, narrationSamples: string[]): string
   if (['dy', 'da', 'xc', 'sa', 'journal', 'adj', 'knock', 'contra'].some(x => s.includes(x))) 
     return 'adjustment' // ENTRY_TYPES.ADJUSTMENT
   
-  return 'ignore' // ENTRY_TYPES.IGNORE
+  return null
 }
 
 function uniq(arr: any[]) {
@@ -97,7 +97,7 @@ export default function ColumnMapper({
   }))
 
   const [amountLogic, setAmountLogic] = useState<'separate' | 'doctype'>('separate')
-  const [entryTypeMap, setEntryTypeMap] = useState<Record<string, string>>({})
+  const [entryTypeMap, setEntryTypeMap] = useState<Record<string, string | null>>({})
   const [error, setError] = useState('')
   const [partyNameError, setPartyNameError] = useState('')
   const [detectedFormat, setDetectedFormat] = useState<DetectedFormat | null>(null)
@@ -142,7 +142,7 @@ export default function ColumnMapper({
 
   const uniqueEntryTypeValues = useMemo(() => {
     if (!mapping.entryType) return []
-    const vals = (rawRows ?? []).slice(0, 200).map((r: any) => r?.[mapping.entryType])
+    const vals = (rawRows ?? []).map((r: any) => r?.[mapping.entryType])
     return uniq(vals)
   }, [rawRows, mapping.entryType])
 
@@ -175,6 +175,9 @@ export default function ColumnMapper({
     }
     if (amountLogic === 'doctype' && !mapping.entryType) {
       return 'Doc Type dependent amount logic requires an Entry Type / Doc Type column.'
+    }
+    if (mapping.entryType && uniqueEntryTypeValues.some((v) => !entryTypeMap[v])) {
+      return 'Please choose an entry type for every unrecognized value before continuing.'
     }
     return ''
   }
@@ -276,11 +279,19 @@ export default function ColumnMapper({
             <div className="mapper-grid">
               {uniqueEntryTypeValues.map((v) => (
                 <label key={v} className="mapper-field">
-                  <span>{v}</span>
+                  <span>
+                    {v} ({(rawRows ?? []).filter((r: any) => String(r?.[mapping.entryType] ?? '').trim() === v).length} rows)
+                    {!entryTypeMap[v] && ' — ⚠ Unrecognized, please choose'}
+                  </span>
                   <select
-                    value={entryTypeMap[v] ?? ENTRY_TYPES.IGNORE}
+                    value={entryTypeMap[v] ?? ''}
                     onChange={(e) => setEntryTypeMap(m => ({ ...m, [v]: e.target.value }))}
+                    style={!entryTypeMap[v] ? {
+                      borderColor: 'var(--orange)',
+                      background: 'rgba(245, 158, 11, 0.12)',
+                    } : undefined}
                   >
+                    <option value="">⚠ Unrecognized — please choose</option>
                     {ENTRY_TYPE_LABELS.map(opt => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
@@ -341,7 +352,7 @@ export default function ColumnMapper({
           type="button"
           className="btn btn-primary"
           onClick={confirm}
-          disabled={showGlobalSettings && !String(partyName || '').trim()}
+          disabled={(showGlobalSettings && !String(partyName || '').trim()) || (mapping.entryType && uniqueEntryTypeValues.some((v) => !entryTypeMap[v]))}
         >
           Confirm Mapping
         </button>

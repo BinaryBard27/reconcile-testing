@@ -104,12 +104,12 @@ export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, m
 
   return (rawRows ?? [])
     .map((row, idx) => {
-      let entryType = 'ignore'
+      let entryType: string | null = mapping.entryType ? null : 'ignore'
       
       // Determine explicit entry type if mapped
       if (mapping.entryType) {
         const rawEntryType = row?.[mapping.entryType] || ''
-        entryType = entryTypeMap[String(rawEntryType).trim()] || 'ignore'
+        entryType = entryTypeMap?.[String(rawEntryType).trim()] ?? null
       }
 
       // Amount: handle debit/credit columns or single amount column
@@ -139,7 +139,7 @@ export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, m
         const num = parseFloat(String(rawVal).replace(/,/g, ''))
         rawAmt = isNaN(num) ? 0 : num
         
-        if (logic === 'doctype' && entryType !== 'ignore') {
+        if (logic === 'doctype' && entryType !== 'ignore' && entryType !== null) {
           if (entryType === 'invoice') amount = Math.abs(rawAmt)
           else if (entryType === 'payment' || entryType === 'credit_note') amount = -Math.abs(rawAmt)
           else amount = rawAmt
@@ -162,7 +162,7 @@ export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, m
         }
       }
 
-      if (entryType === 'ignore') return null
+      if (entryType === 'ignore' || entryType === null) return null
 
       // SAP fallback: if amountUSD not mapped but raw row has it
       let amountUSD = 0

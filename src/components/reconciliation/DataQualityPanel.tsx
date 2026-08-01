@@ -52,10 +52,18 @@ function renderIssues(label, issues) {
     )
   }
 
-  if (issues.unclassified > 0) {
+  if (issues.deliberateIgnore > 0) {
     lines.push(
       <Line key={`${label}-unclass`} tone="orange">
-        {issues.unclassified} rows are classified as Ignore via entry type mapping
+        {issues.deliberateIgnore} rows deliberately set to Ignore
+      </Line>
+    )
+  }
+
+  if (issues.unrecognized > 0) {
+    lines.push(
+      <Line key={`${label}-unrecognized`} tone="red">
+        {issues.unrecognized} rows excluded because the format couldn't be recognized
       </Line>
     )
   }
@@ -71,8 +79,32 @@ function renderIssues(label, issues) {
   return lines
 }
 
-export default function DataQualityPanel({ ourIssues, partyIssues, ourInvoiceCount, partyInvoiceCount, onProceed, onFix }) {
-  const blockProceed = partyInvoiceCount === 0
+export default function DataQualityPanel({
+  ourIssues, partyIssues, ourExcludedPct = 0, ourExcludedRows = 0,
+  partyExcludedPct = 0, partyExcludedRows = 0,
+  ourInvoiceCount, partyInvoiceCount, onProceed, onFix,
+}) {
+  const ourTooMuchExcluded = ourExcludedPct > 0.3
+  const partyTooMuchExcluded = partyExcludedPct > 0.3
+  const blockProceed = partyInvoiceCount === 0 || ourTooMuchExcluded || partyTooMuchExcluded
+
+  function renderExclusionAlert(label, issues) {
+    const pct = issues?.excludedPct ?? 0
+    if (pct <= 0.1) return null
+    const blocking = pct > 0.3
+    return (
+      <div className="card" style={{ marginBottom: 20, borderColor: blocking ? 'var(--red)' : 'var(--orange)' }}>
+        <Line tone={blocking ? 'red' : 'orange'}>
+          <strong>
+            {blocking ? `⚠️ Over 30% of ${label} could not be classified.` : `⚠️ Over 10% of ${label} may be incomplete.`}
+          </strong>
+          <div style={{ marginTop: 8, fontSize: '0.9rem' }}>
+            Go back to the mapping step and manually assign an entry type to each unrecognized value {blocking ? 'before proceeding — otherwise the reconciliation result will be missing most of this file’s data.' : 'before proceeding — otherwise the reconciliation result may be incomplete.'}
+          </div>
+        </Line>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -98,6 +130,9 @@ export default function DataQualityPanel({ ourIssues, partyIssues, ourInvoiceCou
           </Line>
         </div>
       )}
+
+      {renderExclusionAlert('Our Books', { ...ourIssues, excludedPct: ourExcludedPct, excludedRows: ourExcludedRows })}
+      {renderExclusionAlert('Customer Books', { ...partyIssues, excludedPct: partyExcludedPct, excludedRows: partyExcludedRows })}
 
       <div className="card" style={{ marginBottom: 20 }}>
         <h3 style={{ marginBottom: 12 }}>⚠️ Data Quality Issues Found</h3>
