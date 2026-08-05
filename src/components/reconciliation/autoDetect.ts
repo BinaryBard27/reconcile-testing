@@ -292,22 +292,30 @@ export function detectFormatAndSuggestMapping(headers: string[], rows: any[]): {
     const sapRefExact = headers.find(h => 
       h.toLowerCase().replace(/\s+/g,'') === 'reference'
     )
-    suggestion.refNo = sapRefExact || ''
+    suggestion.refNo = sapRefExact 
+      || diagnostics.refNoCandidates[0]?.columnName 
+      || ''
     const sapDate = headers.find(h => headerKey(h) === 'document date')
       || headers.find(h => headerKey(h) === 'posting date')
-    if (sapDate) suggestion.date = sapDate
+    suggestion.date = sapDate 
+      || diagnostics.dateCandidates[0]?.columnName 
+      || suggestion.date
     const docCurrencyValue = headers.find(h => 
       h.toLowerCase().replace(/\s+/g,'').includes('documentcurrencyvalue') ||
       h.toLowerCase().replace(/\s+/g,'').includes('amountindoc')
     )
-    if (docCurrencyValue) {
-      suggestion.amountUSD = docCurrencyValue
-    }
+    suggestion.amountUSD = docCurrencyValue 
+      || diagnostics.amountCandidates.find(c => c.columnName !== suggestion.amountINR)?.columnName
+      || suggestion.amountUSD
   } else if (format === 'ASCENDAS') {
     const invoiceNo = headers.find(h => headerKey(h) === 'invoice no')
-    if (invoiceNo) suggestion.refNo = invoiceNo
+    suggestion.refNo = invoiceNo
+      || diagnostics.refNoCandidates[0]?.columnName
+      || suggestion.refNo
     const invoiceDt = headers.find(h => headerKey(h) === 'invoice dt')
-    if (invoiceDt) suggestion.date = invoiceDt
+    suggestion.date = invoiceDt
+      || diagnostics.dateCandidates[0]?.columnName
+      || suggestion.date
   }
 
   // Calculate overall confidence
