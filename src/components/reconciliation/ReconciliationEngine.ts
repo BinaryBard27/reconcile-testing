@@ -105,6 +105,7 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], _exchangeRat
   const partyGroups = [...netByReference(partyRaw)].map(([refNo, value]) => ({ refNo, ...value }))
   const results: any[] = []
   const matchedOur = new Set<string>(), matchedParty = new Set<string>()
+  const fallbackMatchedPartyIndices = new Set<number>()
 
   const addMatch = (our: any, party: any, matchType: string, fallback: string, remarks = '') => {
     const analysis = classifyDifference(our.netAmount, party.netAmount, `${our.narration || ''} ${party.narration || ''}`)
@@ -124,8 +125,16 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], _exchangeRat
   })
 
   ourGroups.filter(o => !matchedOur.has(o.refNo)).forEach(our => {
-    const party = partyGroups.find(p => !matchedParty.has(p.refNo) && Math.abs(our.netAmount - p.netAmount) / (Math.abs(our.netAmount) || 1) < 0.01 && (!our.date || !p.date || Math.abs(new Date(our.date).getTime() - new Date(p.date).getTime()) / 86400000 <= 7))
-    if (party) addMatch(our, party, 'amount_date', MATCH_STATUS.MATCHED_BY_AMOUNT_DATE)
+    const partyIndex = partyGroups.findIndex((p, index) =>
+      !matchedParty.has(p.refNo)
+      && !fallbackMatchedPartyIndices.has(index)
+      && Math.abs(our.netAmount - p.netAmount) / (Math.abs(our.netAmount) || 1) < 0.01
+      && (!our.date || !p.date || Math.abs(new Date(our.date).getTime() - new Date(p.date).getTime()) / 86400000 <= 7)
+    )
+    if (partyIndex >= 0) {
+      fallbackMatchedPartyIndices.add(partyIndex)
+      addMatch(our, partyGroups[partyIndex], 'amount_date', MATCH_STATUS.MATCHED_BY_AMOUNT_DATE)
+    }
   })
 
   ourRaw.filter(r => !r.refNo || !matchedOur.has(r.refNo)).forEach(r => results.push({ refNo: r.refNo || '(no ref)', rawRefNo: r.rawRefNo, ourDate: r.date, ourAmount: Math.abs(r.amount), ourAmountUSD: Math.abs(r.amountUSD || 0), ourCurrency: r.detectedCurrency || 'INR', ourNarration: r.narration, partyDate: null, partyAmount: 0, partyCurrency: 'INR', partyNarration: '', difference: Math.abs(r.amount), status: MATCH_STATUS.MISSING_IN_PARTY, remarks: '', matchType: 'missing' }))

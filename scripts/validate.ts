@@ -105,6 +105,7 @@ if (!fs.existsSync(testDataDir)) {
 }
 
 const dirs = fs.readdirSync(testDataDir, { withFileTypes: true }).filter(d => d.isDirectory())
+const MIN_LEDGER_ROWS = 20
 
 console.log('--- MICROLEDGER VALIDATION FRAMEWORK ---')
 
@@ -117,34 +118,54 @@ for (const dir of dirs) {
   const dirPath = path.join(testDataDir, dir.name)
   const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.xlsx') || f.endsWith('.csv') || f.endsWith('.xls'))
   
-  let ourBooks = null
-  let partyLedger = null
+  const ourBookCandidates: any[] = []
+  const partyLedgerCandidates: any[] = []
   
   for (const f of files) {
     // Skip known purely supplementary files based on name heuristic
     if (f.toLowerCase().includes('scrap') || f.toLowerCase().includes('working') || f.toLowerCase().includes('payment')) {
+      console.log(`  [CONSIDERED] ${f} - skipped: supplementary-file name heuristic`)
       continue
     }
     
     const fp = path.join(dirPath, f)
     const result = processFile(fp)
-    if (!result) continue
+    if (!result) {
+      console.log(`  [CONSIDERED] ${f} - rejected: could not parse a supported file`)
+      continue
+    }
+
+    const rowCount = result.normalizedRows.length
+    const role = String(result.format).includes('SAP') ? 'Our Books' : 'Party Ledger'
+    if (rowCount < MIN_LEDGER_ROWS) {
+      console.log(`  [CONSIDERED] ${f} - rejected: ${result.format}, ${rowCount} normalized rows (minimum ${MIN_LEDGER_ROWS})`)
+      continue
+    }
+
+    console.log(`  [CONSIDERED] ${f} - qualified: ${result.format}, ${rowCount} normalized rows as ${role}`)
     
     if (String(result.format).includes('SAP')) {
-      if (!ourBooks) ourBooks = result
+      ourBookCandidates.push(result)
     } else {
-      if (!partyLedger) partyLedger = result
+      partyLedgerCandidates.push(result)
     }
   }
-  
-  if (!ourBooks && files.length >= 2) {
-    ourBooks = processFile(path.join(dirPath, files[0]))
-    partyLedger = processFile(path.join(dirPath, files[1]))
-  }
+
+  const largestCandidate = (candidates: any[]) => candidates.reduce((largest, candidate) =>
+    !largest || candidate.normalizedRows.length > largest.normalizedRows.length ? candidate : largest, null)
+  const ourBooks = largestCandidate(ourBookCandidates)
+  const partyLedger = largestCandidate(partyLedgerCandidates)
 
   if (!ourBooks || !partyLedger) {
-    console.log(`\n[SKIPPED] ${dir.name} - Could not identify Our Books vs Party Ledger`)
+    const missing = [!ourBooks ? 'Our Books' : '', !partyLedger ? 'Party Ledger' : ''].filter(Boolean).join(' and ')
+    console.log(`\n[SKIPPED] ${dir.name} - Could not identify ${missing}`)
+    console.log(`  Qualification rule: supported file, non-supplementary name, and at least ${MIN_LEDGER_ROWS} normalized rows`)
+    console.log(`  Qualified candidates: Our Books=${ourBookCandidates.length}, Party Ledger=${partyLedgerCandidates.length}`)
     continue
+  }
+
+  if (ourBookCandidates.length > 1 || partyLedgerCandidates.length > 1) {
+    console.log(`  Selected largest candidates: Our Books=${ourBooks.name}, Party Ledger=${partyLedger.name}`)
   }
 
   console.log(`\n[DATASET] ${dir.name}`)
