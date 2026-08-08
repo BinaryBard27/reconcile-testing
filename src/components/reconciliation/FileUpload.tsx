@@ -12,24 +12,26 @@ type ParsedFile = {
   actualHeaderRow: number
 }
 
-function detectHeaderRow(allRows: any[][]): number {
-  for (let i = 0; i <= Math.min(2, allRows.length - 1); i++) {
-    const row = allRows[i]
-    const nonEmpty = row.filter(v => v !== null && v !== undefined && v !== '')
-    if (nonEmpty.length === 0) continue
-    
-    const stringCount = nonEmpty.filter(v => {
-      const n = parseFloat(String(v))
-      return isNaN(n) || String(v).trim().length > 8
-    }).length
-    
-    const stringRatio = stringCount / nonEmpty.length
-    if (stringRatio >= 0.6) return i
+function detectHeaderRow(rows: any[][], maxScan = 10): number {
+  for (let i = 0; i < Math.min(maxScan, rows.length); i++) {
+    const row = rows[i] ?? []
+    const nonEmpty = row.filter(c => c !== null && c !== undefined && String(c).trim() !== '')
+    const looksLikeTitle = nonEmpty.length <= 2 && row.length > 4
+    const allShortText = nonEmpty.every(c =>
+      typeof c === 'string' && c.length < 40 && !/^\d+$/.test(c)
+    )
+    if (!looksLikeTitle && nonEmpty.length >= 3 && allShortText) {
+      const nextRow = rows[i + 1] ?? []
+      const nextHasData = nextRow.some(c =>
+        typeof c === 'number' || (typeof c === 'string' && /\d/.test(c))
+      )
+      if (nextHasData) return i
+    }
   }
   return 0
 }
 
-function parseCsv(file: File, headerRow = 1): Promise<ParsedFile> {
+function parseCsv(file: File, headerRow = 0): Promise<ParsedFile> {
   return new Promise((resolve, reject) => {
     Papa.parse(file, {
       header: false,
@@ -57,7 +59,7 @@ function parseCsv(file: File, headerRow = 1): Promise<ParsedFile> {
   })
 }
 
-function parseExcel(file: File, sheetName?: string, headerRow = 1): Promise<ParsedFile> {
+function parseExcel(file: File, sheetName?: string, headerRow = 0): Promise<ParsedFile> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (event) => {
@@ -94,7 +96,7 @@ function parseExcel(file: File, sheetName?: string, headerRow = 1): Promise<Pars
   })
 }
 
-async function parseFile(file: File, sheetName?: string, headerRow = 1): Promise<ParsedFile> {
+async function parseFile(file: File, sheetName?: string, headerRow = 0): Promise<ParsedFile> {
   const name = String(file?.name ?? '').toLowerCase()
   if (name.endsWith('.csv')) return parseCsv(file, headerRow)
   if (name.endsWith('.xlsx') || name.endsWith('.xls')) return parseExcel(file, sheetName, headerRow)
@@ -230,9 +232,9 @@ function UploadCard({ title, fileKey, onFileLoaded }) {
         </div>
       )}
 
-      {detectedHeaderRow !== null && detectedHeaderRow > 0 && (
+      {detectedHeaderRow !== null && (
         <div className="tool-result warn" style={{ marginTop: 12, backgroundColor: 'rgba(234, 179, 8, 0.15)', color: 'var(--yellow)', borderColor: 'rgba(234, 179, 8, 0.3)' }}>
-          ⚠️ Headers detected at Row {detectedHeaderRow + 1} — first {detectedHeaderRow} row(s) appear to be summary/data. Header row set to {detectedHeaderRow + 1} automatically.
+          Header row auto-detected at row {detectedHeaderRow + 1} — adjust if needed.
         </div>
       )}
 

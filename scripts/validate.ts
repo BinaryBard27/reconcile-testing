@@ -27,35 +27,55 @@ function uniq(arr: any[]) {
   return [...new Set(arr.map(x => String(x ?? '').trim()).filter(Boolean))]
 }
 
+function detectHeaderRow(rows: any[][], maxScan = 10): number {
+  for (let i = 0; i < Math.min(maxScan, rows.length); i++) {
+    const row = rows[i] ?? []
+    const nonEmpty = row.filter(c => c !== null && c !== undefined && String(c).trim() !== '')
+    const looksLikeTitle = nonEmpty.length <= 2 && row.length > 4
+    const allShortText = nonEmpty.every(c =>
+      typeof c === 'string' && c.length < 40 && !/^\d+$/.test(c)
+    )
+    if (!looksLikeTitle && nonEmpty.length >= 3 && allShortText) {
+      const nextRow = rows[i + 1] ?? []
+      const nextHasData = nextRow.some(c =>
+        typeof c === 'number' || (typeof c === 'string' && /\d/.test(c))
+      )
+      if (nextHasData) return i
+    }
+  }
+  return 0
+}
+
 function parseFileSync(filePath: string) {
   const ext = path.extname(filePath).toLowerCase()
   if (ext === '.csv') {
     const content = fs.readFileSync(filePath, 'utf-8')
-    const results = Papa.parse(content, { header: true, skipEmptyLines: true })
-    const rows = (results.data ?? []).map((r: any) => {
+    const results = Papa.parse(content, { header: false, skipEmptyLines: true })
+    const rawRows = (results.data ?? []) as any[][]
+    const headerRow = detectHeaderRow(rawRows)
+    const rawHeaders = rawRows[headerRow] ?? []
+    const rawHeaderNames = rawHeaders.map(h => String(h ?? '').trim()).filter(Boolean)
+    const rows = rawRows.slice(headerRow + 1).filter(r => Array.isArray(r) && r.some(cell => String(cell ?? '').trim() !== '')).map((r: any[]) => {
       const nr: any = {}
-      for (const [k, v] of Object.entries(r)) {
-        nr[normalizeHeader(k)] = v
-      }
+      rawHeaderNames.forEach((header, index) => { nr[normalizeHeader(header)] = r[index] ?? '' })
       return nr
     })
-    const headers = rows.length > 0 ? Object.keys(rows[0] as any) : []
-    return { headers, rows }
+    return { headers: rawHeaderNames.map(normalizeHeader), rows }
   } else if (ext === '.xlsx' || ext === '.xls') {
     const data = fs.readFileSync(filePath)
     const workbook = XLSX.read(data, { type: 'buffer' })
     const firstSheet = workbook.SheetNames[0]
     const worksheet = workbook.Sheets[firstSheet]
-    const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: true })
-    const rows = rawRows.map((r: any) => {
+    const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '', raw: true })
+    const headerRow = detectHeaderRow(rawRows)
+    const rawHeaders = rawRows[headerRow] ?? []
+    const rawHeaderNames = rawHeaders.map(h => String(h ?? '').trim()).filter(Boolean)
+    const rows = rawRows.slice(headerRow + 1).filter(r => Array.isArray(r) && r.some(cell => String(cell ?? '').trim() !== '')).map((r: any[]) => {
       const nr: any = {}
-      for (const [k, v] of Object.entries(r)) {
-        nr[normalizeHeader(k)] = v
-      }
+      rawHeaderNames.forEach((header, index) => { nr[normalizeHeader(header)] = r[index] ?? '' })
       return nr
     })
-    const headers = rows.length > 0 ? Object.keys(rows[0] as any) : []
-    return { headers, rows }
+    return { headers: rawHeaderNames.map(normalizeHeader), rows }
   }
   return null
 }
