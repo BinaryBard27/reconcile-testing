@@ -172,7 +172,7 @@ function compare(a, b, dir) {
   return sa < sb ? -1 * d : 1 * d
 }
 
-export default function ResultsTable({ results, summary, partyName, recoDate, onExport, onRemarksChange, onActionStatusChange }: any) {
+export default function ResultsTable({ results, summary, partyName, recoDate, onExport, onRemarksChange, onActionStatusChange, noReferenceBridge, referenceMatchRate, totalOurInvoices }: any) {
   const [tab, setTab] = useState('ALL')
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState('refNo')
@@ -275,6 +275,23 @@ export default function ResultsTable({ results, summary, partyName, recoDate, on
           <span style={{ fontWeight: 700 }}>{recoDate}</span>.
         </p>
       </header>
+
+      {noReferenceBridge && (
+        <div role="alert" style={{ marginBottom: 24, padding: '20px 24px', border: '2px solid #f97316', borderRadius: 10, background: 'linear-gradient(135deg, rgba(127, 29, 29, 0.95), rgba(154, 52, 18, 0.95))', color: '#fff7ed', boxShadow: '0 8px 24px rgba(127, 29, 29, 0.28)' }}>
+          <h2 style={{ margin: '0 0 10px', color: '#fff7ed', fontSize: '1.2rem' }}>⚠️ No Shared Reference Number Found</h2>
+          <p style={{ margin: '0 0 12px', lineHeight: 1.55 }}>
+            Only {(referenceMatchRate * 100).toFixed(2)}% of {totalOurInvoices} invoices matched by reference number between these two files. This usually means the two ledgers don&apos;t use a common invoice numbering system — common when the other party&apos;s own export uses their internal document numbers instead of your reference numbers.
+          </p>
+          <p style={{ margin: '0 0 12px', lineHeight: 1.55 }}>
+            Most rows below are showing as &apos;Missing&apos; because they couldn&apos;t be automatically linked — not necessarily because the invoice doesn&apos;t exist on both sides.
+          </p>
+          <p style={{ margin: '0 0 6px', fontWeight: 700 }}>Before trusting this result:</p>
+          <ul style={{ margin: 0, paddingLeft: 22, lineHeight: 1.55 }}>
+            <li>Check if a different export from the other party includes your reference/invoice number</li>
+            <li>If none exists, this relationship likely needs manual review rather than automated matching</li>
+          </ul>
+        </div>
+      )}
 
       <SummaryStatement summary={summary} recoDate={recoDate} partyName={partyName} sym={sym} isMixed={isMixed} />
 

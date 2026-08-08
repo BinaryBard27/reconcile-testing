@@ -11,7 +11,8 @@ export function exportReconciliation(
   ourOpeningBalance: any[],
   partyOpeningBalance: any[],
   ourRows: any[],
-  partyRows: any[]
+  partyRows: any[],
+  reconciliationMeta?: { noReferenceBridge?: boolean, referenceMatchRate?: number, totalOurInvoices?: number }
 ) {
   const finalPartyName = partyName || 'Party'
   let finalRecoDate = recoDate
@@ -54,6 +55,14 @@ export function exportReconciliation(
     ['Amount Mismatches', summary.mismatch],
     ['Possible Matches', summary.possible],
   ]
+
+  if (reconciliationMeta?.noReferenceBridge) {
+    summaryData.splice(3, 0,
+      ['⚠️ NO SHARED REFERENCE NUMBER FOUND'],
+      [`Only ${((reconciliationMeta.referenceMatchRate ?? 0) * 100).toFixed(2)}% of ${reconciliationMeta.totalOurInvoices ?? 0} invoices matched by reference. Most 'Missing' rows below could not be automatically linked — verify manually or check for a different party export before relying on this summary.`],
+      []
+    )
+  }
 
   if (ourOpeningBalance?.length || partyOpeningBalance?.length) {
     summaryData.push([])

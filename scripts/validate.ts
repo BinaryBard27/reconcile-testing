@@ -133,6 +133,7 @@ let totalProcessed = 0
 let totalMatched = 0
 let totalTDS = 0
 let totalMismatch = 0
+let datasetsWithNoReferenceBridge = 0
 
 for (const dir of dirs) {
   const dirPath = path.join(testDataDir, dir.name)
@@ -192,7 +193,7 @@ for (const dir of dirs) {
   console.log(`  Our Books: ${ourBooks.name} (${ourBooks.format}) - ${ourBooks.normalizedRows.length} rows`)
   console.log(`  Party Ledger: ${partyLedger.name} (${partyLedger.format}) - ${partyLedger.normalizedRows.length} rows`)
 
-  const results = reconcileInvoices(ourBooks.normalizedRows, partyLedger.normalizedRows)
+  const { results, noReferenceBridge, referenceMatchRate } = reconcileInvoices(ourBooks.normalizedRows, partyLedger.normalizedRows)
   const summary = buildDetailedSummary(results, ourBooks.normalizedRows, partyLedger.normalizedRows, ourBooks.openingBalance, partyLedger.openingBalance)
   
   console.log(`  Metrics:`)
@@ -202,11 +203,13 @@ for (const dir of dirs) {
   console.log(`    Amount Mismatches: ${summary.mismatch}`)
   console.log(`    Missing in Ours: ${summary.missingInOurs}`)
   console.log(`    Missing in Party: ${summary.missingInParty}`)
+  console.log(`    Reference Bridge: ${(referenceMatchRate * 100).toFixed(2)}% (${noReferenceBridge ? 'NO BRIDGE — likely unmatchable via reference' : 'OK'})`)
   
   totalProcessed++
   totalMatched += summary.matched
   totalTDS += summary.tdsFlagged
   totalMismatch += summary.mismatch
+  if (noReferenceBridge) datasetsWithNoReferenceBridge++
 }
 
 console.log('\n--- SUMMARY ---')
@@ -214,3 +217,4 @@ console.log(`Datasets Processed: ${totalProcessed}`)
 console.log(`Total Matched Invoices: ${totalMatched}`)
 console.log(`Total TDS Detections: ${totalTDS}`)
 console.log(`Total Amount Mismatches: ${totalMismatch}`)
+console.log(`Datasets with No Reference Bridge: ${datasetsWithNoReferenceBridge} / ${totalProcessed}`)

@@ -124,6 +124,15 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], _exchangeRat
     if (hit && Math.abs(our.netAmount - hit.netAmount) / (Math.abs(our.netAmount) || 1) < 0.05) addMatch(our, hit, 'fuzzy', MATCH_STATUS.POSSIBLE_TYPO, `Party ref: ${hit.rows[0]?.rawRefNo || hit.refNo}`)
   })
 
+  // Capture reference-based matching before the amount/date fallback runs.
+  // This is informational only and must not influence fallback matching.
+  const totalOurInvoices = ourGroups.length
+  const exactFuzzyMatchCount = matchedOur.size
+  const referenceMatchRate = totalOurInvoices > 0
+    ? exactFuzzyMatchCount / totalOurInvoices
+    : 0
+  const noReferenceBridge = totalOurInvoices >= 10 && referenceMatchRate < 0.05
+
   ourGroups.filter(o => !matchedOur.has(o.refNo)).forEach(our => {
     const partyIndex = partyGroups.findIndex((p, index) =>
       !matchedParty.has(p.refNo)
@@ -139,7 +148,7 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], _exchangeRat
 
   ourRaw.filter(r => !r.refNo || !matchedOur.has(r.refNo)).forEach(r => results.push({ refNo: r.refNo || '(no ref)', rawRefNo: r.rawRefNo, ourDate: r.date, ourAmount: Math.abs(r.amount), ourAmountUSD: Math.abs(r.amountUSD || 0), ourCurrency: r.detectedCurrency || 'INR', ourNarration: r.narration, partyDate: null, partyAmount: 0, partyCurrency: 'INR', partyNarration: '', difference: Math.abs(r.amount), status: MATCH_STATUS.MISSING_IN_PARTY, remarks: '', matchType: 'missing' }))
   partyRaw.filter(r => !r.refNo || !matchedParty.has(r.refNo)).forEach(r => results.push({ refNo: r.refNo || '(no ref)', rawRefNo: r.rawRefNo, ourDate: null, ourAmount: 0, ourAmountUSD: 0, ourCurrency: 'INR', ourNarration: '', partyDate: r.date, partyAmount: Math.abs(r.amount), partyCurrency: r.detectedCurrency || 'INR', partyNarration: r.narration, difference: -Math.abs(r.amount), status: MATCH_STATUS.MISSING_IN_OURS, remarks: '', matchType: 'missing' }))
-  return results
+  return { results, noReferenceBridge, referenceMatchRate, totalOurInvoices }
 }
 
 export function buildDetailedSummary(results: any[], ourRows: any[], partyRows: any[], ourOpeningBalance: any[], partyOpeningBalance: any[]) {

@@ -162,7 +162,7 @@ for (const dir of dirs) {
     console.log(`PartyLedger first row normalized:`, partyLedger.normalizedRows[0])
   }
 
-  const results = reconcileInvoices(ourBooks.normalizedRows, partyLedger.normalizedRows)
+  const { results } = reconcileInvoices(ourBooks.normalizedRows, partyLedger.normalizedRows)
   const summary = buildDetailedSummary(results, ourBooks.normalizedRows, partyLedger.normalizedRows, ourBooks.openingBalance, partyLedger.openingBalance)
   
   const ourInv = ourBooks.normalizedRows.filter(r => r.entryType === 'invoice').length

@@ -209,6 +209,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
   const [partyInvoiceCount, setPartyInvoiceCount] = useState(0)
 
   const [results, setResults] = useState<any>(null)
+  const [reconciliationMeta, setReconciliationMeta] = useState<any>(null)
   const [summary, setSummary] = useState<any>(null)
 
   const [partyName, setPartyName] = useState('')
@@ -263,9 +264,10 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
     const partyDupMap = detectDuplicates(partyNormalized ?? [])
     const cleanOur = autoRemoveExportDuplicates(ourNormalized ?? [], ourDupMap)
     const cleanParty = autoRemoveExportDuplicates(partyNormalized ?? [], partyDupMap)
-    const res = reconcileInvoices(cleanOur, cleanParty, exchangeRate)
-    const sum = buildDetailedSummary(res, cleanOur, cleanParty, ourOpeningBalance, partyOpeningBalance)
-    setResults(res)
+    const reconciliation = reconcileInvoices(cleanOur, cleanParty, exchangeRate)
+    const sum = buildDetailedSummary(reconciliation.results, cleanOur, cleanParty, ourOpeningBalance, partyOpeningBalance)
+    setResults(reconciliation.results)
+    setReconciliationMeta(reconciliation)
     setSummary(sum)
     setStepIndex(5)
   }
@@ -286,9 +288,10 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
 
     const cleanOur = autoRemoveExportDuplicates(ourTrans, detectDuplicates(ourTrans))
     const cleanParty = autoRemoveExportDuplicates(partyTrans, detectDuplicates(partyTrans))
-    const res = reconcileInvoices(cleanOur, cleanParty, exchangeRate)
-    const sum = buildDetailedSummary(res, cleanOur, cleanParty, ourOB, partyOB)
-    setResults(res)
+    const reconciliation = reconcileInvoices(cleanOur, cleanParty, exchangeRate)
+    const sum = buildDetailedSummary(reconciliation.results, cleanOur, cleanParty, ourOB, partyOB)
+    setResults(reconciliation.results)
+    setReconciliationMeta(reconciliation)
     setSummary(sum)
     setEditMappingOpen(false)
   }
@@ -305,7 +308,8 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
       ourOpeningBalance,
       partyOpeningBalance,
       ourNormalized,
-      partyNormalized
+      partyNormalized,
+      reconciliationMeta
     )
   }
 
@@ -389,6 +393,7 @@ export default function ManualRecoFlow({ onBack }: { onBack: () => void }) {
           <ResultsTable
             results={results}
             summary={summary}
+            {...reconciliationMeta}
             partyName={partyName}
             recoDate={recoDate}
             onExport={handleExport}
