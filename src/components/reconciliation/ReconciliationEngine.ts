@@ -26,7 +26,6 @@ export function classifyDifference(ourNet: number, partyNet: number, narration: 
   const diffPct = Math.abs(diff) / ourNet
   if (Math.abs(diff) < 0.5) {
     const result = { classification: 'NONE' as const }
-    console.log('[TDS/FX]', { ourNet, partyNet, diffPct, section: undefined, classification: result.classification })
     return result
   }
 
@@ -56,18 +55,16 @@ export function classifyDifference(ourNet: number, partyNet: number, narration: 
       result = { classification: 'TDS_AND_FX', tdsSection: best.section, tdsRate: best.rate, tdsAmount: theoreticalTDS, fxAmount: diff - theoreticalTDS, diffPct: diffPct * 100 }
     }
   }
-  // Temporary verification log requested by the specification.
-  console.log('[TDS/FX]', { ourNet, partyNet, diffPct, section: result.tdsSection, classification: result.classification })
   return result
 }
 
 export function netByReference(rows: any[]) {
-  const groups = new Map<string, { netAmount: number, narration: string, date: Date | null, rows: any[] }>()
+  const groups = new Map<string, { netAmount: number, narration: string, date: Date | null, rows: any[], currency: string }>()
   ;(rows ?? [])
     .filter(r => r.entryType === 'invoice' || r.entryType === 'credit_note')
     .forEach(r => {
       if (!r.refNo) return
-      if (!groups.has(r.refNo)) groups.set(r.refNo, { netAmount: 0, narration: r.narration || '', date: r.date || null, rows: [] })
+      if (!groups.has(r.refNo)) groups.set(r.refNo, { netAmount: 0, narration: r.narration || '', date: r.date || null, rows: [], currency: r.detectedCurrency || 'INR' })
       const g = groups.get(r.refNo)!
       g.netAmount += r.entryType === 'credit_note' ? -Math.abs(r.amount) : Math.abs(r.amount)
       g.rows.push(r)
@@ -75,6 +72,22 @@ export function netByReference(rows: any[]) {
       if (!g.date && r.date) g.date = r.date
     })
   return groups
+}
+
+// Converts an amount from one detected currency to another using a
+// single user-supplied rate (entered as "1 USD = X INR" in the UI).
+// Only USD<->INR is supported today because that's the only rate the
+// UI collects. Returns converted=false when currencies match (nothing
+// to do) or when conversion was needed but no rate was supplied —
+// callers must check `converted` before trusting `value`.
+export function convertAmount(amount: number, fromCurrency: string, toCurrency: string, exchangeRate?: number): { value: number, converted: boolean } {
+  const from = fromCurrency || 'INR'
+  const to = toCurrency || 'INR'
+  if (from === to) return { value: amount, converted: true }
+  if (!exchangeRate || exchangeRate <= 0) return { value: amount, converted: false }
+  if (from === 'USD' && to === 'INR') return { value: amount * exchangeRate, converted: true }
+  if (from === 'INR' && to === 'USD') return { value: amount / exchangeRate, converted: true }
+  return { value: amount, converted: false }
 }
 
 function statusFor(analysis: TDSFXResult, diff: number, fallback: string) {
@@ -85,8 +98,9 @@ function statusFor(analysis: TDSFXResult, diff: number, fallback: string) {
   return fallback
 }
 
-function resultFor(our: any, party: any, analysis: TDSFXResult, status: string, matchType: string, remarks = '') {
-  const difference = our.netAmount - party.netAmount
+function resultFor(our: any, party: any, analysis: TDSFXResult, status: string, matchType: string, remarks = '', partyNetForDiff?: number, rateApplied = false) {
+  const partyNetUsed = partyNetForDiff ?? party.netAmount
+  const difference = our.netAmount - partyNetUsed
   return {
     refNo: our.refNo, rawRefNo: our.rows[0]?.rawRefNo, ourDate: our.date, ourAmount: our.netAmount,
     ourAmountUSD: Math.abs(our.rows[0]?.amountUSD || 0), ourCurrency: our.rows[0]?.detectedCurrency || 'INR',
@@ -94,11 +108,11 @@ function resultFor(our: any, party: any, analysis: TDSFXResult, status: string, 
     partyCurrency: party.rows[0]?.detectedCurrency || 'INR', partyNarration: party.narration, difference,
     status, remarks, matchType, diffPct: analysis.diffPct || 0, tdsSection: analysis.tdsSection || '',
     tdsRate: analysis.tdsRate || 0, tdsAmount: analysis.tdsAmount || 0, fxAmount: analysis.fxAmount || 0,
-    classification: analysis.classification,
+    classification: analysis.classification, exchangeRateApplied: rateApplied,
   }
 }
 
-export function reconcileInvoices(ourRows: any[], partyRows: any[], _exchangeRate?: number) {
+export function reconcileInvoices(ourRows: any[], partyRows: any[], exchangeRate?: number) {
   const ourRaw = (ourRows ?? []).filter(r => r.entryType === 'invoice' || r.entryType === 'credit_note')
   const partyRaw = (partyRows ?? []).filter(r => r.entryType === 'invoice' || r.entryType === 'credit_note')
   const ourGroups = [...netByReference(ourRaw)].map(([refNo, value]) => ({ refNo, ...value }))
@@ -106,10 +120,24 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], _exchangeRat
   const results: any[] = []
   const matchedOur = new Set<string>(), matchedParty = new Set<string>()
   const fallbackMatchedPartyIndices = new Set<number>()
+  let currencyRateNeededCount = 0
+  const convertPartyToOurCurrency = (our: any, party: any) => convertAmount(party.netAmount, party.currency, our.currency, exchangeRate)
 
   const addMatch = (our: any, party: any, matchType: string, fallback: string, remarks = '') => {
-    const analysis = classifyDifference(our.netAmount, party.netAmount, `${our.narration || ''} ${party.narration || ''}`)
-    results.push(resultFor(our, party, analysis, statusFor(analysis, our.netAmount - party.netAmount, fallback), matchType, remarks))
+    const conv = convertPartyToOurCurrency(our, party)
+    if (!conv.converted) {
+      currencyRateNeededCount++
+      results.push(resultFor(
+        our, party, { classification: 'NONE' }, MATCH_STATUS.CURRENCY_RATE_NEEDED, matchType,
+        remarks || `${party.currency} vs ${our.currency} — enter exchange rate to compare`,
+      ))
+      matchedOur.add(our.refNo); matchedParty.add(party.refNo)
+      return
+    }
+    const partyNetConverted = conv.value
+    const rateApplied = party.currency !== our.currency
+    const analysis = classifyDifference(our.netAmount, partyNetConverted, `${our.narration || ''} ${party.narration || ''}`)
+    results.push(resultFor(our, party, analysis, statusFor(analysis, our.netAmount - partyNetConverted, fallback), matchType, remarks, partyNetConverted, rateApplied))
     matchedOur.add(our.refNo); matchedParty.add(party.refNo)
   }
 
@@ -121,7 +149,10 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], _exchangeRat
   const fuzzy = new Fuse(partyGroups.filter(p => !matchedParty.has(p.refNo)), { keys: ['refNo'], threshold: 0.2 })
   ourGroups.filter(o => !matchedOur.has(o.refNo)).forEach(our => {
     const hit = fuzzy.search(our.refNo)[0]?.item
-    if (hit && Math.abs(our.netAmount - hit.netAmount) / (Math.abs(our.netAmount) || 1) < 0.05) addMatch(our, hit, 'fuzzy', MATCH_STATUS.POSSIBLE_TYPO, `Party ref: ${hit.rows[0]?.rawRefNo || hit.refNo}`)
+    if (!hit) return
+    const conv = convertPartyToOurCurrency(our, hit)
+    const comparableAmount = conv.converted ? conv.value : hit.netAmount
+    if (Math.abs(our.netAmount - comparableAmount) / (Math.abs(our.netAmount) || 1) < 0.05) addMatch(our, hit, 'fuzzy', MATCH_STATUS.POSSIBLE_TYPO, `Party ref: ${hit.rows[0]?.rawRefNo || hit.refNo}`)
   })
 
   // Capture reference-based matching before the amount/date fallback runs.
@@ -134,12 +165,13 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], _exchangeRat
   const noReferenceBridge = totalOurInvoices >= 10 && referenceMatchRate < 0.05
 
   ourGroups.filter(o => !matchedOur.has(o.refNo)).forEach(our => {
-    const partyIndex = partyGroups.findIndex((p, index) =>
-      !matchedParty.has(p.refNo)
-      && !fallbackMatchedPartyIndices.has(index)
-      && Math.abs(our.netAmount - p.netAmount) / (Math.abs(our.netAmount) || 1) < 0.01
-      && (!our.date || !p.date || Math.abs(new Date(our.date).getTime() - new Date(p.date).getTime()) / 86400000 <= 7)
-    )
+    const partyIndex = partyGroups.findIndex((p, index) => {
+      if (matchedParty.has(p.refNo) || fallbackMatchedPartyIndices.has(index)) return false
+      const conv = convertPartyToOurCurrency(our, p)
+      const comparableAmount = conv.converted ? conv.value : p.netAmount
+      return Math.abs(our.netAmount - comparableAmount) / (Math.abs(our.netAmount) || 1) < 0.01
+        && (!our.date || !p.date || Math.abs(new Date(our.date).getTime() - new Date(p.date).getTime()) / 86400000 <= 7)
+    })
     if (partyIndex >= 0) {
       fallbackMatchedPartyIndices.add(partyIndex)
       addMatch(our, partyGroups[partyIndex], 'amount_date', MATCH_STATUS.MATCHED_BY_AMOUNT_DATE)
@@ -148,7 +180,7 @@ export function reconcileInvoices(ourRows: any[], partyRows: any[], _exchangeRat
 
   ourRaw.filter(r => !r.refNo || !matchedOur.has(r.refNo)).forEach(r => results.push({ refNo: r.refNo || '(no ref)', rawRefNo: r.rawRefNo, ourDate: r.date, ourAmount: Math.abs(r.amount), ourAmountUSD: Math.abs(r.amountUSD || 0), ourCurrency: r.detectedCurrency || 'INR', ourNarration: r.narration, partyDate: null, partyAmount: 0, partyCurrency: 'INR', partyNarration: '', difference: Math.abs(r.amount), status: MATCH_STATUS.MISSING_IN_PARTY, remarks: '', matchType: 'missing' }))
   partyRaw.filter(r => !r.refNo || !matchedParty.has(r.refNo)).forEach(r => results.push({ refNo: r.refNo || '(no ref)', rawRefNo: r.rawRefNo, ourDate: null, ourAmount: 0, ourAmountUSD: 0, ourCurrency: 'INR', ourNarration: '', partyDate: r.date, partyAmount: Math.abs(r.amount), partyCurrency: r.detectedCurrency || 'INR', partyNarration: r.narration, difference: -Math.abs(r.amount), status: MATCH_STATUS.MISSING_IN_OURS, remarks: '', matchType: 'missing' }))
-  return { results, noReferenceBridge, referenceMatchRate, totalOurInvoices }
+  return { results, noReferenceBridge, referenceMatchRate, totalOurInvoices, currencyRateNeededCount }
 }
 
 export function buildDetailedSummary(results: any[], ourRows: any[], partyRows: any[], ourOpeningBalance: any[], partyOpeningBalance: any[]) {

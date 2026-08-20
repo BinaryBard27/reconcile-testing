@@ -21,6 +21,7 @@ export const MATCH_STATUS = {
   TDS_AND_FX: 'Possible TDS + FX Difference',
   FX_ONLY: 'Possible FX Difference (Exchange Gain/Loss)',
   MANUALLY_MATCHED: 'Manually Matched',
+  CURRENCY_RATE_NEEDED: 'Currency Rate Needed — Enter Exchange Rate',
 }
 
 export const STATUS_COLORS = {
@@ -37,5 +38,6 @@ export const STATUS_COLORS = {
   'Possible TDS + FX Difference': '#7c3aed',
   'Possible FX Difference (Exchange Gain/Loss)': '#0891b2',
   'Manually Matched': '#6366f1',
+  'Currency Rate Needed — Enter Exchange Rate': '#dc2626',
 }
 

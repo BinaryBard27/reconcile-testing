@@ -193,7 +193,8 @@ for (const dir of dirs) {
   console.log(`  Our Books: ${ourBooks.name} (${ourBooks.format}) - ${ourBooks.normalizedRows.length} rows`)
   console.log(`  Party Ledger: ${partyLedger.name} (${partyLedger.format}) - ${partyLedger.normalizedRows.length} rows`)
 
-  const { results, noReferenceBridge, referenceMatchRate } = reconcileInvoices(ourBooks.normalizedRows, partyLedger.normalizedRows)
+  const exchangeRate = process.env.EXCHANGE_RATE ? parseFloat(process.env.EXCHANGE_RATE) : undefined
+  const { results, noReferenceBridge, referenceMatchRate, currencyRateNeededCount } = reconcileInvoices(ourBooks.normalizedRows, partyLedger.normalizedRows, exchangeRate)
   const summary = buildDetailedSummary(results, ourBooks.normalizedRows, partyLedger.normalizedRows, ourBooks.openingBalance, partyLedger.openingBalance)
   
   console.log(`  Metrics:`)
@@ -204,6 +205,7 @@ for (const dir of dirs) {
   console.log(`    Missing in Ours: ${summary.missingInOurs}`)
   console.log(`    Missing in Party: ${summary.missingInParty}`)
   console.log(`    Reference Bridge: ${(referenceMatchRate * 100).toFixed(2)}% (${noReferenceBridge ? 'NO BRIDGE — likely unmatchable via reference' : 'OK'})`)
+  if (currencyRateNeededCount > 0) console.log(`    Currency Rate Needed: ${currencyRateNeededCount} (matched by ref, but currencies differ and no --EXCHANGE_RATE was given)`)
   
   totalProcessed++
   totalMatched += summary.matched

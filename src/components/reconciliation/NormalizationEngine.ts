@@ -93,9 +93,18 @@ export function normalizeRows(rawRows: any[], mapping: any, entryTypeMap: any, m
     if (detected) primaryCurrency = detected
   }
 
+  // SAP exports "Company Code Currency Value" as the home-currency (INR)
+  // amount by definition — it is already converted, regardless of what
+  // currency the underlying invoice was raised in. When autoDetect has
+  // pointed amountINR at that column, the "amountUSD" fallback (usually
+  // "Document Currency Value") is a transaction-currency column that is
+  // populated on INR rows too — its presence is not evidence the row is in
+  // USD, so the per-row USD override below must not apply to it.
+  const amountINRIsSapHomeCurrency = /company code currency value/i.test(String(mapping.amountINR || ''))
+
   // Check if USD column has data
   let hasUSDData = false
-  if (mapping.amountUSD) {
+  if (mapping.amountUSD && !amountINRIsSapHomeCurrency) {
     hasUSDData = (rawRows ?? []).some(row => {
       const val = normalizeAmount(row?.[mapping.amountUSD])
       return val > 0
