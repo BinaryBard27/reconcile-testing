@@ -76,6 +76,21 @@ function FieldSelect({ label, required, headers, value, onChange }: any) {
   )
 }
 
+// Frankfurter (ECB) is a free, key-free, CORS-open FX API — safe to
+// call straight from the browser. It only publishes end-of-day
+// reference rates, so this is a convenience for "today's rate", not
+// a substitute for the actual rate an old invoice was booked at. The
+// date returned is shown so the user can judge whether it's close
+// enough or should be overridden.
+async function fetchLiveUsdInrRate(): Promise<{ rate: number, date: string }> {
+  const res = await fetch('https://api.frankfurter.dev/v1/latest?base=USD&symbols=INR')
+  if (!res.ok) throw new Error(`Rate service returned ${res.status}`)
+  const data = await res.json()
+  const rate = data?.rates?.INR
+  if (!rate || typeof rate !== 'number') throw new Error('INR rate not found in response')
+  return { rate, date: data.date }
+}
+
 export default function ColumnMapper({
   headers,
   rawRows,
@@ -102,6 +117,23 @@ export default function ColumnMapper({
   const [partyNameError, setPartyNameError] = useState('')
   const [detectedFormat, setDetectedFormat] = useState<DetectedFormat | null>(null)
   const [loadedFromCache, setLoadedFromCache] = useState(false)
+  const [rateFetchStatus, setRateFetchStatus] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [rateFetchError, setRateFetchError] = useState('')
+  const [rateAsOfDate, setRateAsOfDate] = useState('')
+
+  const handleFetchLiveRate = async () => {
+    setRateFetchStatus('loading')
+    setRateFetchError('')
+    try {
+      const { rate, date } = await fetchLiveUsdInrRate()
+      setExchangeRate?.(rate)
+      setRateAsOfDate(date)
+      setRateFetchStatus('idle')
+    } catch (err: any) {
+      setRateFetchStatus('error')
+      setRateFetchError(err?.message || 'Could not fetch live rate')
+    }
+  }
 
   // Initialization: Load from cache or auto-detect
   useEffect(() => {
@@ -330,12 +362,33 @@ export default function ColumnMapper({
             {mapping.amountUSD && (
               <label className="mapper-field">
                 <span>Exchange Rate (USD to INR)</span>
-                <input
-                  type="number"
-                  placeholder="e.g. 86.64"
-                  value={exchangeRate || ''}
-                  onChange={(e) => setExchangeRate?.(parseFloat(e.target.value))}
-                />
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    placeholder="e.g. 86.64"
+                    value={exchangeRate || ''}
+                    onChange={(e) => setExchangeRate?.(parseFloat(e.target.value))}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleFetchLiveRate}
+                    disabled={rateFetchStatus === 'loading'}
+                  >
+                    {rateFetchStatus === 'loading' ? 'Fetching…' : 'Fetch Live Rate'}
+                  </button>
+                </div>
+                {rateAsOfDate && rateFetchStatus !== 'error' && (
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #6b7280)', marginTop: 4 }}>
+                    ECB reference rate as of {rateAsOfDate} — for older invoices, check whether that day's rate applies before trusting this.
+                  </span>
+                )}
+                {rateFetchStatus === 'error' && (
+                  <span style={{ color: 'var(--red)', fontSize: '0.82rem', marginTop: 4 }}>
+                    {rateFetchError}. Enter the rate manually instead.
+                  </span>
+                )}
               </label>
             )}
           </div>
